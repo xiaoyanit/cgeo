@@ -11,14 +11,13 @@ import java.lang.ref.WeakReference;
  *
  * Create static private subclasses of this handler class in your activity.
  *
- * @param <ActivityType>
  */
 public abstract class WeakReferenceHandler<ActivityType extends Activity> extends Handler {
 
     private final WeakReference<ActivityType> activityRef;
 
     protected WeakReferenceHandler(final ActivityType activity) {
-        this.activityRef = new WeakReference<ActivityType>(activity);
+        this.activityRef = new WeakReference<>(activity);
     }
 
     protected ActivityType getActivity() {

@@ -1,31 +1,40 @@
 package cgeo.geocaching.connector;
 
-import cgeo.geocaching.Geocache;
+import cgeo.geocaching.Image;
 import cgeo.geocaching.TrackableLog;
 import cgeo.geocaching.enumerations.LogType;
 
-import android.net.Uri;
+import org.eclipse.jdt.annotation.NonNull;
+import org.eclipse.jdt.annotation.Nullable;
 
 import java.util.Calendar;
 import java.util.List;
 
 public interface ILoggingManager {
 
-    LogResult postLog(Geocache cache,
-            LogType logType,
-            Calendar date,
-            String log,
-            List<TrackableLog> trackableLogs);
+    /**
+     * Post a log for a cache online
+     *
+     * @param logPassword
+     *            optional, maybe null
+     */
+    @NonNull
+    LogResult postLog(@NonNull LogType logType,
+            @NonNull Calendar date,
+            @NonNull String log,
+            @Nullable String logPassword,
+            @NonNull List<TrackableLog> trackableLogs);
 
+    @NonNull
     ImageResult postLogImage(String logId,
-            String imageCaption,
-            String imageDescription,
-            Uri imageUri);
+            Image image);
 
     public boolean hasLoaderError();
 
+    @NonNull
     public List<TrackableLog> getTrackables();
 
+    @NonNull
     public List<LogType> getPossibleLogTypes();
 
     public void init();

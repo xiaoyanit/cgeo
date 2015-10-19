@@ -1,17 +1,16 @@
 package cgeo.geocaching.maps;
 
 import cgeo.geocaching.CachePopup;
+import cgeo.geocaching.DataStore;
 import cgeo.geocaching.Geocache;
 import cgeo.geocaching.IWaypoint;
 import cgeo.geocaching.R;
-import cgeo.geocaching.Settings;
 import cgeo.geocaching.WaypointPopup;
-import cgeo.geocaching.cgData;
 import cgeo.geocaching.activity.Progress;
 import cgeo.geocaching.connector.gc.GCMap;
 import cgeo.geocaching.enumerations.CacheType;
 import cgeo.geocaching.enumerations.LoadFlags;
-import cgeo.geocaching.geopoint.Geopoint;
+import cgeo.geocaching.location.Geopoint;
 import cgeo.geocaching.maps.interfaces.CachesOverlayItemImpl;
 import cgeo.geocaching.maps.interfaces.GeoPointImpl;
 import cgeo.geocaching.maps.interfaces.ItemizedOverlayImpl;
@@ -19,11 +18,14 @@ import cgeo.geocaching.maps.interfaces.MapItemFactory;
 import cgeo.geocaching.maps.interfaces.MapProjectionImpl;
 import cgeo.geocaching.maps.interfaces.MapProvider;
 import cgeo.geocaching.maps.interfaces.MapViewImpl;
+import cgeo.geocaching.settings.Settings;
 import cgeo.geocaching.utils.Log;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.NonNull;
 
 import android.content.Context;
+import android.content.res.Resources.NotFoundException;
 import android.graphics.Canvas;
 import android.graphics.DashPathEffect;
 import android.graphics.Paint;
@@ -38,16 +40,16 @@ import java.util.List;
 
 public class CachesOverlay extends AbstractItemizedOverlay {
 
-    private List<CachesOverlayItemImpl> items = new ArrayList<CachesOverlayItemImpl>();
+    private List<CachesOverlayItemImpl> items = new ArrayList<>();
     private Context context = null;
     private boolean displayCircles = false;
-    private Progress progress = new Progress();
+    private final Progress progress = new Progress();
     private Paint blockedCircle = null;
     private PaintFlagsDrawFilter setFilter = null;
     private PaintFlagsDrawFilter removeFilter = null;
     private MapItemFactory mapItemFactory = null;
 
-    public CachesOverlay(ItemizedOverlayImpl ovlImpl, Context contextIn) {
+    public CachesOverlay(final ItemizedOverlayImpl ovlImpl, final Context contextIn) {
         super(ovlImpl);
 
         populate();
@@ -58,26 +60,26 @@ public class CachesOverlay extends AbstractItemizedOverlay {
         mapItemFactory = mapProvider.getMapItemFactory();
     }
 
-    void updateItems(CachesOverlayItemImpl item) {
-        List<CachesOverlayItemImpl> itemsPre = new ArrayList<CachesOverlayItemImpl>();
+    void updateItems(final CachesOverlayItemImpl item) {
+        final List<CachesOverlayItemImpl> itemsPre = new ArrayList<>();
         itemsPre.add(item);
 
         updateItems(itemsPre);
     }
 
-    void updateItems(List<CachesOverlayItemImpl> itemsPre) {
+    void updateItems(final List<CachesOverlayItemImpl> itemsPre) {
         if (itemsPre == null) {
             return;
         }
 
-        for (CachesOverlayItemImpl item : itemsPre) {
+        for (final CachesOverlayItemImpl item : itemsPre) {
             item.setMarker(boundCenterBottom(item.getMarker(0)));
         }
 
         // ensure no interference between the draw and content changing routines
         getOverlayImpl().lock();
         try {
-            items = new ArrayList<CachesOverlayItemImpl>(itemsPre);
+            items = new ArrayList<>(itemsPre);
 
             setLastFocusedItemIndex(-1); // to reset tap during data change
             populate();
@@ -95,7 +97,7 @@ public class CachesOverlay extends AbstractItemizedOverlay {
     }
 
     @Override
-    public void draw(Canvas canvas, MapViewImpl mapView, boolean shadow) {
+    public void draw(final Canvas canvas, final MapViewImpl mapView, final boolean shadow) {
 
         drawInternal(canvas, mapView.getMapProjection());
 
@@ -103,15 +105,15 @@ public class CachesOverlay extends AbstractItemizedOverlay {
     }
 
     @Override
-    public void drawOverlayBitmap(Canvas canvas, Point drawPosition,
-            MapProjectionImpl projection, byte drawZoomLevel) {
+    public void drawOverlayBitmap(final Canvas canvas, final Point drawPosition,
+            final MapProjectionImpl projection, final byte drawZoomLevel) {
 
         drawInternal(canvas, projection);
 
         super.drawOverlayBitmap(canvas, drawPosition, projection, drawZoomLevel);
     }
 
-    private void drawInternal(Canvas canvas, MapProjectionImpl projection) {
+    private void drawInternal(final Canvas canvas, final MapProjectionImpl projection) {
         if (!displayCircles || items.isEmpty()) {
             return;
         }
@@ -121,25 +123,28 @@ public class CachesOverlay extends AbstractItemizedOverlay {
         try {
             lazyInitializeDrawingObjects();
             canvas.setDrawFilter(setFilter);
+            final int height = canvas.getHeight();
+            final int width = canvas.getWidth();
 
             final int radius = calculateDrawingRadius(projection);
             final Point center = new Point();
 
-            for (CachesOverlayItemImpl item : items) {
+            for (final CachesOverlayItemImpl item : items) {
                 if (item.applyDistanceRule()) {
                     final Geopoint itemCoord = item.getCoord().getCoords();
                     final GeoPointImpl itemGeo = mapItemFactory.getGeoPointBase(itemCoord);
                     projection.toPixels(itemGeo, center);
+                    if (center.x > -radius && center.y > -radius && center.x < width + radius && center.y < height + radius) {
+                        // dashed circle around the waypoint
+                        blockedCircle.setColor(0x66BB0000);
+                        blockedCircle.setStyle(Style.STROKE);
+                        canvas.drawCircle(center.x, center.y, radius, blockedCircle);
 
-                    // dashed circle around the waypoint
-                    blockedCircle.setColor(0x66BB0000);
-                    blockedCircle.setStyle(Style.STROKE);
-                    canvas.drawCircle(center.x, center.y, radius, blockedCircle);
-
-                    // filling the circle area with a transparent color
-                    blockedCircle.setColor(0x44BB0000);
-                    blockedCircle.setStyle(Style.FILL);
-                    canvas.drawCircle(center.x, center.y, radius, blockedCircle);
+                        // filling the circle area with a transparent color
+                        blockedCircle.setColor(0x44BB0000);
+                        blockedCircle.setStyle(Style.FILL);
+                        canvas.drawCircle(center.x, center.y, radius, blockedCircle);
+                    }
                 }
             }
             canvas.setDrawFilter(removeFilter);
@@ -153,11 +158,9 @@ public class CachesOverlay extends AbstractItemizedOverlay {
      * reality and therefore the minor changes due to the projection will not make any visible difference at the zoom
      * levels which are used to see the circles.
      *
-     * @param projection
-     * @return
      */
-    private int calculateDrawingRadius(MapProjectionImpl projection) {
-        float[] distanceArray = new float[1];
+    private int calculateDrawingRadius(final MapProjectionImpl projection) {
+        final float[] distanceArray = new float[1];
         final Geopoint itemCoord = items.get(0).getCoord().getCoords();
 
         Location.distanceBetween(itemCoord.getLatitude(), itemCoord.getLongitude(),
@@ -197,7 +200,7 @@ public class CachesOverlay extends AbstractItemizedOverlay {
     }
 
     @Override
-    public boolean onTap(int index) {
+    public boolean onTap(final int index) {
 
         try {
             if (items.size() <= index) {
@@ -206,9 +209,9 @@ public class CachesOverlay extends AbstractItemizedOverlay {
 
             progress.show(context, context.getResources().getString(R.string.map_live), context.getResources().getString(R.string.cache_dialog_loading_details), true, null);
 
-            CachesOverlayItemImpl item = null;
             // prevent concurrent changes
             getOverlayImpl().lock();
+            CachesOverlayItemImpl item = null;
             try {
                 if (index < items.size()) {
                     item = items.get(index);
@@ -222,19 +225,24 @@ public class CachesOverlay extends AbstractItemizedOverlay {
             }
 
             final IWaypoint coordinate = item.getCoord();
+            final String coordType = coordinate.getCoordType();
 
-            if (StringUtils.isNotBlank(coordinate.getCoordType()) && coordinate.getCoordType().equalsIgnoreCase("cache") && StringUtils.isNotBlank(coordinate.getGeocode())) {
-                Geocache cache = cgData.loadCache(coordinate.getGeocode(), LoadFlags.LOAD_CACHE_OR_DB);
-                RequestDetailsThread requestDetailsThread = new RequestDetailsThread(cache);
-                if (!requestDetailsThread.requestRequired()) {
-                    // don't show popup if we have enough details
-                    progress.dismiss();
+            if (StringUtils.equalsIgnoreCase(coordType, "cache") && StringUtils.isNotBlank(coordinate.getGeocode())) {
+                final Geocache cache = DataStore.loadCache(coordinate.getGeocode(), LoadFlags.LOAD_CACHE_OR_DB);
+                if (cache != null) {
+                    final RequestDetailsThread requestDetailsThread = new RequestDetailsThread(cache);
+                    if (!requestDetailsThread.requestRequired()) {
+                        // don't show popup if we have enough details
+                        progress.dismiss();
+                    }
+                    requestDetailsThread.start();
+                    return true;
                 }
-                requestDetailsThread.start();
-                return true;
+                progress.dismiss();
+                return false;
             }
 
-            if (coordinate.getCoordType() != null && coordinate.getCoordType().equalsIgnoreCase("waypoint") && coordinate.getId() >= 0) {
+            if (StringUtils.equalsIgnoreCase(coordType, "waypoint") && coordinate.getId() >= 0) {
                 CGeoMap.markCacheAsDirty(coordinate.getGeocode());
                 WaypointPopup.startActivity(context, coordinate.getId(), coordinate.getGeocode());
             } else {
@@ -243,22 +251,20 @@ public class CachesOverlay extends AbstractItemizedOverlay {
             }
 
             progress.dismiss();
-        } catch (Exception e) {
-            Log.e("cgMapOverlay.onTap", e);
-            if (progress != null) {
-                progress.dismiss();
-            }
+        } catch (final NotFoundException e) {
+            Log.e("CachesOverlay.onTap", e);
+            progress.dismiss();
         }
 
         return true;
     }
 
     @Override
-    public CachesOverlayItemImpl createItem(int index) {
+    public CachesOverlayItemImpl createItem(final int index) {
         try {
             return items.get(index);
-        } catch (Exception e) {
-            Log.e("cgMapOverlay.createItem", e);
+        } catch (final Exception e) {
+            Log.e("CachesOverlay.createItem", e);
         }
 
         return null;
@@ -268,8 +274,8 @@ public class CachesOverlay extends AbstractItemizedOverlay {
     public int size() {
         try {
             return items.size();
-        } catch (Exception e) {
-            Log.e("cgMapOverlay.size", e);
+        } catch (final Exception e) {
+            Log.e("CachesOverlay.size", e);
         }
 
         return 0;
@@ -277,9 +283,9 @@ public class CachesOverlay extends AbstractItemizedOverlay {
 
     private class RequestDetailsThread extends Thread {
 
-        private final Geocache cache;
+        private final @NonNull Geocache cache;
 
-        public RequestDetailsThread(Geocache cache) {
+        public RequestDetailsThread(final @NonNull Geocache cache) {
             this.cache = cache;
         }
 

@@ -1,11 +1,12 @@
 package cgeo.geocaching.maps.interfaces;
 
-import cgeo.geocaching.geopoint.Viewport;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.location.Viewport;
 import cgeo.geocaching.maps.CachesOverlay;
-import cgeo.geocaching.maps.PositionOverlay;
-import cgeo.geocaching.maps.ScaleOverlay;
+import cgeo.geocaching.maps.PositionAndScaleOverlay;
 
-import android.app.Activity;
+import org.eclipse.jdt.annotation.NonNull;
+
 import android.content.Context;
 import android.graphics.drawable.Drawable;
 
@@ -23,12 +24,11 @@ public interface MapViewImpl {
 
     void clearOverlays();
 
-    void addOverlay(OverlayImpl ovl);
-
     MapControllerImpl getMapController();
 
     void destroyDrawingCache();
 
+    @NonNull
     GeoPointImpl getMapViewCenter();
 
     int getLatitudeSpan();
@@ -47,9 +47,7 @@ public interface MapViewImpl {
 
     CachesOverlay createAddMapOverlay(Context context, Drawable drawable);
 
-    ScaleOverlay createAddScaleOverlay(Activity activity);
-
-    PositionOverlay createAddPositionOverlay(Activity activity);
+    PositionAndScaleOverlay createAddPositionAndScaleOverlay(final Geopoint coords, final String geocode);
 
     void setMapSource();
 
@@ -78,7 +76,7 @@ public interface MapViewImpl {
     /**
      * Indicates if the current map view supports different themes
      * for map rendering
-     * 
+     *
      * @return true - supports custom themes, false - does not support custom themes
      */
     boolean hasMapThemes();

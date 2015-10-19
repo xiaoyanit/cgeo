@@ -1,39 +1,50 @@
 package cgeo.geocaching.connector;
 
 import cgeo.geocaching.Geocache;
-import cgeo.geocaching.ICache;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.NonNull;
+import org.eclipse.jdt.annotation.Nullable;
 
-public class UnknownConnector extends AbstractConnector {
+class UnknownConnector extends AbstractConnector {
 
     @Override
+    @NonNull
     public String getName() {
         return "Unknown caches";
     }
 
     @Override
-    public String getCacheUrl(Geocache cache) {
-        return null; // we have no url for these caches
+    @Nullable
+    public String getCacheUrl(@NonNull final Geocache cache) {
+        return null;
     }
 
     @Override
+    @NonNull
     public String getHost() {
-        return null; // we have no host for these caches
+        return StringUtils.EMPTY; // we have no host for these caches
     }
 
     @Override
-    public boolean isOwner(final ICache cache) {
+    public boolean isOwner(@NonNull final Geocache cache) {
         return false;
     }
 
     @Override
-    public boolean canHandle(final String geocode) {
+    public boolean canHandle(final @NonNull String geocode) {
         return StringUtils.isNotBlank(geocode);
     }
 
     @Override
+    @NonNull
     protected String getCacheUrlPrefix() {
+        throw new IllegalStateException("getCacheUrl cannot be called on unknown caches");
+    }
+
+    @Override
+    @Nullable
+    public String getGeocodeFromUrl(@NonNull final String url) {
         return null;
     }
 

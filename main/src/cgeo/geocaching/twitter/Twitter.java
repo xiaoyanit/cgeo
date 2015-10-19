@@ -1,105 +1,90 @@
 package cgeo.geocaching.twitter;
 
+import cgeo.geocaching.DataStore;
 import cgeo.geocaching.Geocache;
-import cgeo.geocaching.Settings;
+import cgeo.geocaching.LogEntry;
 import cgeo.geocaching.Trackable;
-import cgeo.geocaching.cgData;
-import cgeo.geocaching.cgeoapplication;
 import cgeo.geocaching.enumerations.LoadFlags;
-import cgeo.geocaching.geopoint.Geopoint;
-import cgeo.geocaching.geopoint.GeopointFormatter.Format;
 import cgeo.geocaching.network.Network;
 import cgeo.geocaching.network.OAuth;
+import cgeo.geocaching.network.OAuthTokens;
 import cgeo.geocaching.network.Parameters;
+import cgeo.geocaching.settings.Settings;
 import cgeo.geocaching.utils.Log;
+import cgeo.geocaching.utils.LogTemplateProvider;
+import cgeo.geocaching.utils.LogTemplateProvider.LogContext;
 
 import ch.boye.httpclientandroidlib.HttpResponse;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.NonNull;
+import org.eclipse.jdt.annotation.Nullable;
 
 public final class Twitter {
-    private static final String HASH_PREFIX_WITH_BLANK = " #";
-    public static final int MAX_TWEET_SIZE = 140;
 
-    public static void postTweet(final cgeoapplication app, final String status, final Geopoint coords) {
-        if (app == null) {
-            return;
+    private static final int MAX_TWEET_SIZE = 140;
+
+    private Twitter() {
+        // Utility class
+    }
+
+    public static void postTweetCache(final String geocode, final @Nullable LogEntry logEntry) {
+        final Geocache cache = DataStore.loadCache(geocode, LoadFlags.LOAD_CACHE_OR_DB);
+        if (cache != null) {
+            postTweet(getStatusMessage(cache, logEntry));
         }
-        if (!Settings.isTwitterLoginValid()) {
+    }
+
+    public static void postTweetTrackable(final String geocode, final @Nullable LogEntry logEntry) {
+        final Trackable trackable = DataStore.loadTrackable(geocode);
+        if (trackable != null) {
+            postTweet(getStatusMessage(trackable, logEntry));
+        }
+    }
+
+    private static void postTweet(final String status) {
+        if (!Settings.isUseTwitter() || !Settings.isTwitterLoginValid()) {
             return;
         }
 
         try {
-            Parameters parameters = new Parameters("status", status);
-            if (coords != null) {
-                parameters.put(
-                        "lat", coords.format(Format.LAT_DECDEGREE_RAW),
-                        "long", coords.format(Format.LON_DECDEGREE_RAW),
-                        "display_coordinates", "true");
-            }
+            final String trimmed = StringUtils.trim(status);
+            final String truncated = StringUtils.length(trimmed) <= MAX_TWEET_SIZE ? trimmed : StringUtils.substring(trimmed, 0, MAX_TWEET_SIZE - 1) + '…';
+            final Parameters parameters = new Parameters("status", truncated);
 
-            OAuth.signOAuth("api.twitter.com", "/1/statuses/update.json", "POST", false, parameters, Settings.getTokenPublic(), Settings.getTokenSecret(), Settings.getKeyConsumerPublic(), Settings.getKeyConsumerSecret());
-            final HttpResponse httpResponse = Network.postRequest("http://api.twitter.com/1/statuses/update.json", parameters);
-            if (httpResponse != null && httpResponse.getStatusLine().getStatusCode() == 200) {
+            OAuth.signOAuth("api.twitter.com", "/1.1/statuses/update.json", "POST", true, parameters,
+                    new OAuthTokens(Settings.getTokenPublic(), Settings.getTokenSecret()), Settings.getTwitterKeyConsumerPublic(), Settings.getTwitterKeyConsumerSecret());
+            final HttpResponse httpResponse = Network.postRequest("https://api.twitter.com/1.1/statuses/update.json", parameters);
+            if (Network.isSuccess(httpResponse)) {
                 Log.i("Tweet posted");
             } else {
-                Log.e("Tweet could not be posted");
+                Log.e("Tweet could not be posted. Reason: " + httpResponse);
             }
-        } catch (Exception e) {
-            Log.e("cgBase.postTweet", e);
+        } catch (final Exception e) {
+            Log.e("Twitter.postTweet", e);
         }
     }
 
-    public static void appendHashTag(final StringBuilder status, final String tag) {
-        if (status.length() + HASH_PREFIX_WITH_BLANK.length() + tag.length() <= MAX_TWEET_SIZE) {
-            final String tagWithPrefix = HASH_PREFIX_WITH_BLANK + tag;
-            if (status.indexOf(tagWithPrefix, 0) == -1) {
-                status.append(tagWithPrefix);
-            }
+    private static void appendHashTag(final StringBuilder status, final String tag) {
+        if (status.length() + 1 + tag.length() <= MAX_TWEET_SIZE && !StringUtils.contains(status, tag)) {
+            status.append(' ').append(tag);
         }
     }
 
-    public static void postTweetCache(String geocode) {
-        if (!Settings.isUseTwitter()) {
-            return;
-        }
-        if (!Settings.isTwitterLoginValid()) {
-            return;
-        }
-        final Geocache cache = cgData.loadCache(geocode, LoadFlags.LOAD_CACHE_OR_DB);
-        postTweet(cgeoapplication.getInstance(), getStatusMessage(cache), null);
+    @NonNull
+    static String getStatusMessage(final @NonNull Geocache cache, final @Nullable LogEntry logEntry) {
+        return appendHashTags(LogTemplateProvider.applyTemplates(Settings.getCacheTwitterMessage(), new LogContext(cache, logEntry)));
     }
 
-    static String getStatusMessage(Geocache cache) {
-        String name = cache.getName();
-        if (name.length() > 100) {
-            name = name.substring(0, 100) + '…';
-            }
-        final String url = StringUtils.defaultString(cache.getUrl());
-        return fillTemplate(Settings.getCacheTwitterMessage(), name, url);
+    @NonNull
+    static String getStatusMessage(final @NonNull Trackable trackable, final @Nullable LogEntry logEntry) {
+        return appendHashTags(LogTemplateProvider.applyTemplates(Settings.getTrackableTwitterMessage(), new LogContext(trackable, logEntry)));
     }
 
-    private static String fillTemplate(String template, String name, final String url) {
-        String result = StringUtils.replace(template, "[NAME]", name);
-        result = StringUtils.replace(result, "[URL]", url);
-        StringBuilder builder = new StringBuilder(result);
-        appendHashTag(builder, "cgeo");
-        appendHashTag(builder, "geocaching");
+    private static String appendHashTags(final String status) {
+        final StringBuilder builder = new StringBuilder(status);
+        appendHashTag(builder, "#cgeo");
+        appendHashTag(builder, "#geocaching");
         return builder.toString();
-    }
-
-    public static void postTweetTrackable(String geocode) {
-        final Trackable trackable = cgData.loadTrackable(geocode);
-        postTweet(cgeoapplication.getInstance(), getStatusMessage(trackable), null);
-    }
-
-    static String getStatusMessage(Trackable trackable) {
-        String name = trackable.getName();
-        if (name.length() > 82) {
-            name = name.substring(0, 81) + '…';
-        }
-        String url = StringUtils.defaultString(trackable.getUrl());
-        String status = Settings.getTrackableTwitterMessage();
-        return fillTemplate(status, name, url);
     }
 }

@@ -1,38 +1,42 @@
 package cgeo.geocaching.ui;
 
-import butterknife.InjectView;
-import butterknife.Views;
+import butterknife.Bind;
 
 import cgeo.geocaching.CacheDetailActivity;
 import cgeo.geocaching.Geocache;
-import cgeo.geocaching.IGeoData;
 import cgeo.geocaching.R;
-import cgeo.geocaching.Settings;
-import cgeo.geocaching.cgeoapplication;
 import cgeo.geocaching.enumerations.CacheListType;
-import cgeo.geocaching.enumerations.CacheType;
 import cgeo.geocaching.filter.IFilter;
-import cgeo.geocaching.geopoint.Geopoint;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.sensors.GeoData;
+import cgeo.geocaching.sensors.Sensors;
+import cgeo.geocaching.settings.Settings;
 import cgeo.geocaching.sorting.CacheComparator;
 import cgeo.geocaching.sorting.DistanceComparator;
+import cgeo.geocaching.sorting.EventDateComparator;
 import cgeo.geocaching.sorting.InverseComparator;
 import cgeo.geocaching.sorting.VisitComparator;
 import cgeo.geocaching.utils.AngleUtils;
+import cgeo.geocaching.utils.CalendarUtils;
+import cgeo.geocaching.utils.Formatter;
 import cgeo.geocaching.utils.Log;
+import cgeo.geocaching.utils.MapUtils;
 
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.builder.HashCodeBuilder;
+import org.eclipse.jdt.annotation.NonNull;
 
+import rx.android.schedulers.AndroidSchedulers;
+import rx.functions.Action1;
+
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.res.Resources;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.LayerDrawable;
+import android.graphics.drawable.BitmapDrawable;
 import android.text.Spannable;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StrikethroughSpan;
-import android.util.SparseArray;
 import android.view.GestureDetector;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -43,6 +47,7 @@ import android.widget.CheckBox;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -53,25 +58,26 @@ import java.util.Set;
 public class CacheListAdapter extends ArrayAdapter<Geocache> {
 
     private LayoutInflater inflater = null;
-    private CacheComparator cacheComparator = null;
+    private static CacheComparator cacheComparator = null;
     private Geopoint coords;
     private float azimuth = 0;
     private long lastSort = 0L;
     private boolean selectMode = false;
     private IFilter currentFilter = null;
     private List<Geocache> originalList = null;
+    private final boolean isLiveList = Settings.isLiveList();
 
-    final private Set<CompassMiniView> compasses = new LinkedHashSet<CompassMiniView>();
-    final private Set<DistanceView> distances = new LinkedHashSet<DistanceView>();
+    final private Set<CompassMiniView> compasses = new LinkedHashSet<>();
+    final private Set<DistanceView> distances = new LinkedHashSet<>();
     final private CacheListType cacheListType;
     final private Resources res;
     /** Resulting list of caches */
     final private List<Geocache> list;
+    private boolean eventsOnly;
     private boolean inverseSort = false;
 
     private static final int SWIPE_MIN_DISTANCE = 60;
     private static final int SWIPE_MAX_OFF_PATH = 100;
-    private static final SparseArray<Drawable> gcIconDrawables = new SparseArray<Drawable>();
     /**
      * time in milliseconds after which the list may be resorted due to position updates
      */
@@ -94,66 +100,36 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
      * view holder for the cache list adapter
      *
      */
-    protected static class ViewHolder {
-        @InjectView(R.id.checkbox) protected CheckBox checkbox;
-        @InjectView(R.id.log_status_mark) protected ImageView logStatusMark;
-        @InjectView(R.id.text) protected TextView text;
-        @InjectView(R.id.distance) protected DistanceView distance;
-        @InjectView(R.id.favorite) protected TextView favorite;
-        @InjectView(R.id.info) protected TextView info;
-        @InjectView(R.id.inventory) protected ImageView inventory;
-        @InjectView(R.id.direction) protected CompassMiniView direction;
-        @InjectView(R.id.dirimg) protected ImageView dirImg;
+    protected static class ViewHolder extends AbstractViewHolder {
+        @Bind(R.id.checkbox) protected CheckBox checkbox;
+        @Bind(R.id.log_status_mark) protected ImageView logStatusMark;
+        @Bind(R.id.text) protected TextView text;
+        @Bind(R.id.distance) protected DistanceView distance;
+        @Bind(R.id.favorite) protected TextView favorite;
+        @Bind(R.id.info) protected TextView info;
+        @Bind(R.id.inventory) protected TextView inventory;
+        @Bind(R.id.direction) protected CompassMiniView direction;
+        @Bind(R.id.dirimg) protected ImageView dirImg;
+        public Geocache cache = null;
 
-        public ViewHolder(View view) {
-            Views.inject(this, view);
-            view.setTag(this);
+        public ViewHolder(final View view) {
+            super(view);
         }
     }
 
-    public CacheListAdapter(final Activity activity, final List<Geocache> list, CacheListType cacheListType) {
+    public CacheListAdapter(final Activity activity, final List<Geocache> list, final CacheListType cacheListType) {
         super(activity, 0, list);
-        final IGeoData currentGeo = cgeoapplication.getInstance().currentGeo();
-        if (currentGeo != null) {
-            coords = currentGeo.getCoords();
-        }
+        final GeoData currentGeo = Sensors.getInstance().currentGeo();
+        coords = currentGeo.getCoords();
         this.res = activity.getResources();
         this.list = list;
         this.cacheListType = cacheListType;
-        if (cacheListType == CacheListType.HISTORY) {
-            cacheComparator = new VisitComparator();
-        }
-
-        final Drawable modifiedCoordinatesMarker = activity.getResources().getDrawable(R.drawable.marker_usermodifiedcoords);
-        for (final CacheType cacheType : CacheType.values()) {
-            // unmodified icon
-            int hashCode = getIconHashCode(cacheType, false);
-            gcIconDrawables.put(hashCode, activity.getResources().getDrawable(cacheType.markerId));
-            // icon with flag for user modified coordinates
-            hashCode = getIconHashCode(cacheType, true);
-            Drawable[] layers = new Drawable[2];
-            layers[0] = activity.getResources().getDrawable(cacheType.markerId);
-            layers[1] = modifiedCoordinatesMarker;
-            LayerDrawable ld = new LayerDrawable(layers);
-            ld.setLayerInset(1,
-                    layers[0].getIntrinsicWidth() - layers[1].getIntrinsicWidth(),
-                    layers[0].getIntrinsicHeight() - layers[1].getIntrinsicHeight(),
-                    0, 0);
-            gcIconDrawables.put(hashCode, ld);
-        }
-    }
-
-    private static int getIconHashCode(final CacheType cacheType, final boolean userModifiedOrFinal) {
-        return new HashCodeBuilder()
-                .append(cacheType)
-                .append(userModifiedOrFinal)
-                .toHashCode();
+        checkEvents();
     }
 
     /**
      * change the sort order
      *
-     * @param comparator
      */
     public void setComparator(final CacheComparator comparator) {
         cacheComparator = comparator;
@@ -168,11 +144,44 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
         inverseSort = !inverseSort;
     }
 
+    /**
+     * Set the inverseSort order.
+     *
+     * @param inverseSort
+     *          True if sort is inverted
+     */
+    public void setInverseSort(final boolean inverseSort) {
+        this.inverseSort = inverseSort;
+    }
+
+    /**
+     * Obtain the current inverseSort order.
+     *
+     * @return
+     *          True if sort is inverted
+     */
+    public boolean getInverseSort() {
+        return inverseSort;
+    }
+
     public CacheComparator getCacheComparator() {
+        if (isHistory()) {
+            return VisitComparator.singleton;
+        }
+        if (cacheComparator == null && eventsOnly) {
+            return EventDateComparator.singleton;
+        }
+        if (cacheComparator == null) {
+            return DistanceComparator.singleton;
+        }
         return cacheComparator;
     }
 
-    public Geocache findCacheByGeocode(String geocode) {
+    private boolean isHistory() {
+        return cacheListType == CacheListType.HISTORY;
+    }
+
+    public Geocache findCacheByGeocode(final String geocode) {
         for (int i = 0; i < getCount(); i++) {
             if (getItem(i).getGeocode().equalsIgnoreCase(geocode)) {
                 return getItem(i);
@@ -187,7 +196,7 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
     public void reFilter() {
         if (currentFilter != null) {
             // Back up the list again
-            originalList = new ArrayList<Geocache>(list);
+            originalList = new ArrayList<>(list);
 
             currentFilter.filter(list);
         }
@@ -199,7 +208,7 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
     public void setFilter(final IFilter filter) {
         // Backup current caches list if it isn't backed up yet
         if (originalList == null) {
-            originalList = new ArrayList<Geocache>(list);
+            originalList = new ArrayList<>(list);
         }
 
         // If there is already a filter in place, this is a request to change or clear the filter, so we have to
@@ -228,7 +237,7 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
 
     public int getCheckedCount() {
         int checked = 0;
-        for (Geocache cache : list) {
+        for (final Geocache cache : list) {
             if (cache.isStatusChecked()) {
                 checked++;
             }
@@ -256,7 +265,7 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
     }
 
     public void invertSelection() {
-        for (Geocache cache : list) {
+        for (final Geocache cache : list) {
             cache.setStatusChecked(!cache.isStatusChecked());
         }
         notifyDataSetChanged();
@@ -272,13 +281,13 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
             updateSortByDistance();
         }
         else {
-            Collections.sort(list, getPotentialInversion(cacheComparator));
+            Collections.sort(list, getPotentialInversion(getCacheComparator()));
         }
 
         notifyDataSetChanged();
     }
 
-    public void setActualCoordinates(final Geopoint coords) {
+    public void setActualCoordinates(@NonNull final Geopoint coords) {
         this.coords = coords;
         updateSortByDistance();
 
@@ -306,7 +315,7 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
         if (coords == null) {
             return;
         }
-        final ArrayList<Geocache> oldList = new ArrayList<Geocache>(list);
+        final List<Geocache> oldList = new ArrayList<>(list);
         Collections.sort(list, getPotentialInversion(new DistanceComparator(coords, list)));
 
         // avoid an update if the list has not changed due to location update
@@ -325,11 +334,17 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
     }
 
     private boolean isSortedByDistance() {
-        return cacheComparator == null || cacheComparator instanceof DistanceComparator;
+        final CacheComparator comparator = getCacheComparator();
+        return comparator == null || comparator instanceof DistanceComparator;
+    }
+
+    private boolean isSortedByEvent() {
+        final CacheComparator comparator = getCacheComparator();
+        return comparator == null || comparator instanceof EventDateComparator;
     }
 
     public void setActualHeading(final float direction) {
-        if (Math.abs(AngleUtils.difference(azimuth, direction)) < 10) {
+        if (Math.abs(AngleUtils.difference(azimuth, direction)) < 5) {
             return;
         }
 
@@ -356,28 +371,22 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
 
         final ViewHolder holder;
         if (v == null) {
-            v = inflater.inflate(R.layout.caches_item, null);
+            v = inflater.inflate(R.layout.cacheslist_item, parent, false);
 
             holder = new ViewHolder(v);
         } else {
             holder = (ViewHolder) v.getTag();
         }
+        holder.cache = cache;
 
         final boolean lightSkin = Settings.isLightSkin();
 
-        final TouchListener touchLst = new TouchListener(cache);
-        v.setOnClickListener(touchLst);
-        v.setOnLongClickListener(touchLst);
-        v.setOnTouchListener(touchLst);
-        v.setLongClickable(true);
+        final TouchListener touchListener = new TouchListener(cache, this);
+        v.setOnClickListener(touchListener);
+        v.setOnLongClickListener(touchListener);
+        v.setOnTouchListener(touchListener);
 
-        if (selectMode) {
-            holder.checkbox.setVisibility(View.VISIBLE);
-        }
-        else {
-            holder.checkbox.setVisibility(View.GONE);
-        }
-
+        holder.checkbox.setVisibility(selectMode ? View.VISIBLE : View.GONE);
         holder.checkbox.setChecked(cache.isStatusChecked());
         holder.checkbox.setOnClickListener(new SelectionCheckBoxListener(cache));
 
@@ -400,7 +409,7 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
         }
 
         Spannable spannable = null;
-        if (cache.isDisabled() || cache.isArchived()) { // strike
+        if (cache.isDisabled() || cache.isArchived() || CalendarUtils.isPastEvent(cache)) { // strike
             spannable = Spannable.Factory.getInstance().newSpannable(cache.getName());
             spannable.setSpan(new StrikethroughSpan(), 0, spannable.toString().length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
@@ -417,9 +426,12 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
         else {
             holder.text.setText(cache.getName());
         }
-        holder.text.setCompoundDrawablesWithIntrinsicBounds(getCacheIcon(cache), null, null, null);
+        holder.text.setCompoundDrawablesWithIntrinsicBounds(MapUtils.getCacheMarker(res, cache, cacheListType), null, null, null);
 
-        if (cache.getInventoryItems() > 0) {
+
+        final int inventorySize = cache.getInventoryItems();
+        if (inventorySize > 0) {
+            holder.inventory.setText(Integer.toString(inventorySize));
             holder.inventory.setVisibility(View.VISIBLE);
         } else {
             holder.inventory.setVisibility(View.GONE);
@@ -428,26 +440,41 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
         if (cache.getDistance() != null) {
             holder.distance.setDistance(cache.getDistance());
         }
-        if (cache.getCoords() != null) {
-            holder.direction.setVisibility(View.VISIBLE);
-            holder.dirImg.setVisibility(View.GONE);
-            holder.direction.updateAzimuth(azimuth);
-            if (coords != null) {
-                holder.distance.update(coords);
-                holder.direction.updateCurrentCoords(coords);
+
+        if (cache.getCoords() != null && coords != null) {
+            holder.distance.update(coords);
+        }
+
+        // only show the direction if this is enabled in the settings
+        if (isLiveList) {
+            if (cache.getCoords() != null) {
+                holder.direction.setVisibility(View.VISIBLE);
+                holder.dirImg.setVisibility(View.GONE);
+                holder.direction.updateAzimuth(azimuth);
+                if (coords != null) {
+                    holder.direction.updateCurrentCoords(coords);
+                }
+            } else if (cache.getDirection() != null) {
+                holder.direction.setVisibility(View.VISIBLE);
+                holder.dirImg.setVisibility(View.GONE);
+                holder.direction.updateAzimuth(azimuth);
+                holder.direction.updateHeading(cache.getDirection());
+            } else if (StringUtils.isNotBlank(cache.getDirectionImg())) {
+                holder.dirImg.setVisibility(View.INVISIBLE);
+                holder.direction.setVisibility(View.GONE);
+                DirectionImage.fetchDrawable(cache.getDirectionImg()).observeOn(AndroidSchedulers.mainThread()).subscribe(new Action1<BitmapDrawable>() {
+                    @Override
+                    public void call(final BitmapDrawable bitmapDrawable) {
+                        if (cache == holder.cache) {
+                            holder.dirImg.setImageDrawable(bitmapDrawable);
+                            holder.dirImg.setVisibility(View.VISIBLE);
+                        }
+                    }
+                });
+            } else {
+                holder.dirImg.setVisibility(View.GONE);
+                holder.direction.setVisibility(View.GONE);
             }
-        } else if (cache.getDirection() != null) {
-            holder.direction.setVisibility(View.VISIBLE);
-            holder.dirImg.setVisibility(View.GONE);
-            holder.direction.updateAzimuth(azimuth);
-            holder.direction.updateHeading(cache.getDirection());
-        } else if (StringUtils.isNotBlank(cache.getDirectionImg())) {
-            holder.dirImg.setImageDrawable(DirectionImage.getDrawable(cache.getDirectionImg()));
-            holder.dirImg.setVisibility(View.VISIBLE);
-            holder.direction.setVisibility(View.GONE);
-        } else {
-            holder.dirImg.setVisibility(View.GONE);
-            holder.direction.setVisibility(View.GONE);
         }
 
         holder.favorite.setText(Integer.toString(cache.getFavoritePoints()));
@@ -459,46 +486,23 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
         } else {
             favoriteBack = R.drawable.favorite_background_dark;
         }
-        final float myVote = cache.getMyVote();
-        if (myVote > 0) { // use my own rating for display, if I have voted
-            if (myVote >= 4) {
-                favoriteBack = RATING_BACKGROUND[2];
-            } else if (myVote >= 3) {
-                favoriteBack = RATING_BACKGROUND[1];
-            } else if (myVote > 0) {
-                favoriteBack = RATING_BACKGROUND[0];
-            }
-        } else {
-            final float rating = cache.getRating();
-            if (rating >= 3.5) {
-                favoriteBack = RATING_BACKGROUND[2];
-            } else if (rating >= 2.1) {
-                favoriteBack = RATING_BACKGROUND[1];
-            } else if (rating > 0.0) {
-                favoriteBack = RATING_BACKGROUND[0];
-            }
+        final float rating = cache.getRating();
+        if (rating >= 3.5) {
+            favoriteBack = RATING_BACKGROUND[2];
+        } else if (rating >= 2.1) {
+            favoriteBack = RATING_BACKGROUND[1];
+        } else if (rating > 0.0) {
+            favoriteBack = RATING_BACKGROUND[0];
         }
         holder.favorite.setBackgroundResource(favoriteBack);
 
-        if (cacheListType == CacheListType.HISTORY && cache.getVisitedDate() > 0) {
+        if (isHistory() && cache.getVisitedDate() > 0) {
             holder.info.setText(Formatter.formatCacheInfoHistory(cache));
         } else {
-            holder.info.setText(Formatter.formatCacheInfoLong(cache, cacheListType));
+            holder.info.setText(Formatter.formatCacheInfoLong(cache));
         }
 
         return v;
-    }
-
-    private static Drawable getCacheIcon(Geocache cache) {
-        int hashCode = getIconHashCode(cache.getType(), cache.hasUserModifiedCoords() || cache.hasFinalDefined());
-        final Drawable drawable = gcIconDrawables.get(hashCode);
-        if (drawable != null) {
-            return drawable;
-        }
-
-        // fallback to mystery icon
-        hashCode = getIconHashCode(CacheType.MYSTERY, cache.hasUserModifiedCoords() || cache.hasFinalDefined());
-        return gcIconDrawables.get(hashCode);
     }
 
     @Override
@@ -512,89 +516,86 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
 
         private final Geocache cache;
 
-        public SelectionCheckBoxListener(Geocache cache) {
+        public SelectionCheckBoxListener(final Geocache cache) {
             this.cache = cache;
         }
 
         @Override
-        public void onClick(View view) {
+        public void onClick(final View view) {
+            assert view instanceof CheckBox;
             final boolean checkNow = ((CheckBox) view).isChecked();
             cache.setStatusChecked(checkNow);
         }
     }
 
-    private class TouchListener implements View.OnLongClickListener, View.OnClickListener, View.OnTouchListener {
+    private static class TouchListener implements View.OnClickListener, View.OnLongClickListener, View.OnTouchListener {
 
-        private boolean touch = true;
-        private final GestureDetector gestureDetector;
         private final Geocache cache;
+        private final GestureDetector gestureDetector;
+        private final @NonNull WeakReference<CacheListAdapter> adapterRef;
 
-        public TouchListener(final Geocache cache) {
+        public TouchListener(final Geocache cache, final @NonNull CacheListAdapter adapter) {
             this.cache = cache;
-            final FlingGesture dGesture = new FlingGesture(cache);
-            gestureDetector = new GestureDetector(getContext(), dGesture);
+            gestureDetector = new GestureDetector(adapter.getContext(), new FlingGesture(cache, adapter));
+            adapterRef = new WeakReference<>(adapter);
         }
 
-        // tap on item
+        // Tap on item
         @Override
-        public void onClick(View view) {
-            if (!touch) {
-                touch = true;
+        public void onClick(final View view) {
+            final CacheListAdapter adapter = adapterRef.get();
+            if (adapter == null) {
                 return;
             }
-
-            if (isSelectMode()) {
+            if (adapter.isSelectMode()) {
                 cache.setStatusChecked(!cache.isStatusChecked());
-                notifyDataSetChanged();
-                return;
+                adapter.notifyDataSetChanged();
+            } else {
+                CacheDetailActivity.startActivity(adapter.getContext(), cache.getGeocode(), cache.getName());
             }
-
-            // load cache details
-            CacheDetailActivity.startActivity(getContext(), cache.getGeocode(), cache.getName());
         }
 
-        // long tap on item
+        // Long tap on item
         @Override
-        public boolean onLongClick(View view) {
-            if (!touch) {
-                touch = true;
-                return true;
-            }
-
-            return view.showContextMenu();
+        public boolean onLongClick(final View view) {
+            view.showContextMenu();
+            return true;
         }
 
-        // swipe on item
+        // Swipe on item
+        @SuppressLint("ClickableViewAccessibility")
         @Override
-        public boolean onTouch(View view, MotionEvent event) {
-            if (gestureDetector.onTouchEvent(event)) {
-                touch = false;
-                return true;
-            }
+        public boolean onTouch(final View view, final MotionEvent event) {
+            return gestureDetector.onTouchEvent(event);
 
-            return false;
         }
     }
 
-    private class FlingGesture extends GestureDetector.SimpleOnGestureListener {
+    private static class FlingGesture extends GestureDetector.SimpleOnGestureListener {
 
         private final Geocache cache;
+        private final @NonNull WeakReference<CacheListAdapter> adapterRef;
 
-        public FlingGesture(Geocache cache) {
+        public FlingGesture(final Geocache cache, final @NonNull CacheListAdapter adapter) {
             this.cache = cache;
+            adapterRef = new WeakReference<>(adapter);
         }
 
         @Override
-        public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+        public boolean onFling(final MotionEvent e1, final MotionEvent e2, final float velocityX, final float velocityY) {
             try {
                 if (Math.abs(e1.getY() - e2.getY()) > SWIPE_MAX_OFF_PATH) {
+                    return false;
+                }
+                final CacheListAdapter adapter = adapterRef.get();
+                if (adapter == null) {
                     return false;
                 }
 
                 // left to right swipe
                 if ((e2.getX() - e1.getX()) > SWIPE_MIN_DISTANCE && Math.abs(velocityX) > Math.abs(velocityY)) {
-                    if (!selectMode) {
-                        switchSelectMode();
+                    if (!adapter.selectMode) {
+                        adapter.switchSelectMode();
                         cache.setStatusChecked(true);
                     }
                     return true;
@@ -602,12 +603,12 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
 
                 // right to left swipe
                 if ((e1.getX() - e2.getX()) > SWIPE_MIN_DISTANCE && Math.abs(velocityX) > Math.abs(velocityY)) {
-                    if (selectMode) {
-                        switchSelectMode();
+                    if (adapter.selectMode) {
+                        adapter.switchSelectMode();
                     }
                     return true;
                 }
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 Log.w("CacheListAdapter.FlingGesture.onFling", e);
             }
 
@@ -620,8 +621,8 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
     }
 
     public List<Geocache> getCheckedCaches() {
-        final ArrayList<Geocache> result = new ArrayList<Geocache>();
-        for (Geocache cache : list) {
+        final List<Geocache> result = new ArrayList<>();
+        for (final Geocache cache : list) {
             if (cache.isStatusChecked()) {
                 result.add(cache);
             }
@@ -634,7 +635,7 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
         if (!result.isEmpty()) {
             return result;
         }
-        return new ArrayList<Geocache>(list);
+        return new ArrayList<>(list);
     }
 
     public int getCheckedOrAllCount() {
@@ -643,5 +644,22 @@ public class CacheListAdapter extends ArrayAdapter<Geocache> {
             return checked;
         }
         return list.size();
+    }
+
+    public void checkEvents() {
+        eventsOnly = true;
+        for (final Geocache cache : list) {
+            if (!cache.isEventCache()) {
+                eventsOnly = false;
+                if (isSortedByEvent()) {
+                    setComparator(DistanceComparator.singleton);
+                }
+                return;
+            }
+        }
+    }
+
+    public boolean isEventsOnly() {
+        return eventsOnly;
     }
 }

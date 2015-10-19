@@ -1,8 +1,9 @@
 package cgeo.geocaching.sorting;
 
 import cgeo.geocaching.Geocache;
-import cgeo.geocaching.geopoint.Geopoint;
+import cgeo.geocaching.location.Geopoint;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -15,9 +16,20 @@ public class DistanceComparator extends AbstractCacheComparator {
     final private List<Geocache> list;
     private boolean cachedDistances;
 
-    public DistanceComparator(final Geopoint coords, List<Geocache> list) {
+    final static public DistanceComparator singleton = new DistanceComparator();
+
+    public DistanceComparator() {
+        // This constructor should not be used as a comparator as distances will not be updated.
+        // It is needed in order to really know we are sorting by Distances in the sort menu.
+        // If you need it for sorting, please use the second constructor.
+        coords = null;
+        list = new ArrayList<>();
+    }
+
+    public DistanceComparator(final Geopoint coords, final List<Geocache> list) {
         this.coords = coords;
-        this.list = list;
+        // create new list so we can iterate over the list in parallel with the cache list adapter
+        this.list = new ArrayList<>(list);
     }
 
     /**
@@ -33,11 +45,6 @@ public class DistanceComparator extends AbstractCacheComparator {
             }
         }
         cachedDistances = true;
-    }
-
-    @Override
-    protected boolean canCompare(Geocache cache1, Geocache cache2) {
-        return true;
     }
 
     @Override

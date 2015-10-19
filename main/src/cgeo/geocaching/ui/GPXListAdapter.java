@@ -1,12 +1,15 @@
 package cgeo.geocaching.ui;
 
-import cgeo.geocaching.R;
+import butterknife.Bind;
+
 import cgeo.geocaching.GpxFileListActivity;
+import cgeo.geocaching.R;
 import cgeo.geocaching.files.GPXImporter;
+import cgeo.geocaching.ui.dialog.Dialogs;
+import cgeo.geocaching.utils.FileUtils;
 import cgeo.geocaching.utils.Log;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -18,28 +21,29 @@ import java.io.File;
 import java.util.List;
 
 public class GPXListAdapter extends ArrayAdapter<File> {
-    private GpxFileListActivity activity = null;
-    private LayoutInflater inflater = null;
+    private final GpxFileListActivity activity;
+    private final LayoutInflater inflater;
 
-    private static class ViewHolder {
-        TextView filepath;
-        TextView filename;
+    protected static class ViewHolder extends AbstractViewHolder {
+        @Bind(R.id.filepath) protected TextView filepath;
+        @Bind(R.id.filename) protected TextView filename;
+
+        public ViewHolder(final View view) {
+            super(view);
+        }
     }
 
-    public GPXListAdapter(GpxFileListActivity parentIn, List<File> listIn) {
+    public GPXListAdapter(final GpxFileListActivity parentIn, final List<File> listIn) {
         super(parentIn, 0, listIn);
 
         activity = parentIn;
+        inflater = ((Activity) getContext()).getLayoutInflater();
     }
 
     @Override
     public View getView(final int position, final View rowView, final ViewGroup parent) {
-        if (inflater == null) {
-            inflater = ((Activity) getContext()).getLayoutInflater();
-        }
-
         if (position > getCount()) {
-            Log.w("cgGPXListAdapter.getView: Attempt to access missing item #" + position);
+            Log.w("GPXListAdapter.getView: Attempt to access missing item #" + position);
             return null;
         }
 
@@ -49,13 +53,8 @@ public class GPXListAdapter extends ArrayAdapter<File> {
 
         final ViewHolder holder;
         if (view == null) {
-            view = inflater.inflate(R.layout.gpx_item, null);
-
-            holder = new ViewHolder();
-            holder.filepath = (TextView) view.findViewById(R.id.filepath);
-            holder.filename = (TextView) view.findViewById(R.id.filename);
-
-            view.setTag(holder);
+            view = inflater.inflate(R.layout.gpx_item, parent, false);
+            holder = new ViewHolder(view);
         } else {
             holder = (ViewHolder) view.getTag();
         }
@@ -63,7 +62,7 @@ public class GPXListAdapter extends ArrayAdapter<File> {
         view.setOnClickListener(new View.OnClickListener() {
 
             @Override
-            public void onClick(View v) {
+            public void onClick(final View v) {
                 (new GPXImporter(activity, activity.getListId(), null)).importGPX(file);
             }
         });
@@ -74,26 +73,14 @@ public class GPXListAdapter extends ArrayAdapter<File> {
         view.setOnLongClickListener(new View.OnLongClickListener() {
 
             @Override
-            public boolean onLongClick(View v) {
-                AlertDialog.Builder builder = new AlertDialog.Builder(activity);
-                builder.setTitle(R.string.gpx_import_delete_title)
-                        .setMessage(activity.getString(R.string.gpx_import_delete_message, file.getName()))
-                        .setCancelable(false)
-                        .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int id) {
-                                file.delete();
-                                GPXListAdapter.this.remove(file);
-                            }
-                        })
-                        .setNegativeButton(android.R.string.no, new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int id) {
-                                dialog.cancel();
-                            }
-                        });
-                AlertDialog alert = builder.create();
-                alert.show();
+            public boolean onLongClick(final View v) {
+                Dialogs.confirmYesNo(activity, R.string.gpx_import_delete_title, activity.getString(R.string.gpx_import_delete_message, file.getName()), new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(final DialogInterface dialog, final int id) {
+                        FileUtils.deleteIgnoringFailure(file);
+                        GPXListAdapter.this.remove(file);
+                    }
+                });
                 return true;
             }
         });

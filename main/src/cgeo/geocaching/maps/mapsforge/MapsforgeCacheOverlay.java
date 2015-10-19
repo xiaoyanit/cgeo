@@ -5,6 +5,7 @@ import cgeo.geocaching.maps.interfaces.ItemizedOverlayImpl;
 import cgeo.geocaching.maps.interfaces.MapProjectionImpl;
 import cgeo.geocaching.maps.interfaces.MapViewImpl;
 
+import org.eclipse.jdt.annotation.NonNull;
 import org.mapsforge.android.maps.Projection;
 import org.mapsforge.android.maps.overlay.ItemizedOverlay;
 
@@ -18,10 +19,12 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class MapsforgeCacheOverlay extends ItemizedOverlay<MapsforgeCacheOverlayItem> implements ItemizedOverlayImpl {
 
-    private CachesOverlay base;
-    private Lock lock = new ReentrantLock();
+    @NonNull
+    private final CachesOverlay base;
+    @NonNull
+    private final Lock lock = new ReentrantLock();
 
-    public MapsforgeCacheOverlay(Context contextIn, Drawable markerIn) {
+    public MapsforgeCacheOverlay(final Context contextIn, final Drawable markerIn) {
         super(boundCenterBottom(markerIn));
         base = new CachesOverlay(this, contextIn);
     }
@@ -32,35 +35,23 @@ public class MapsforgeCacheOverlay extends ItemizedOverlay<MapsforgeCacheOverlay
     }
 
     @Override
-    protected MapsforgeCacheOverlayItem createItem(int i) {
-        if (base == null) {
-            return null;
-        }
-
+    protected MapsforgeCacheOverlayItem createItem(final int i) {
         return (MapsforgeCacheOverlayItem) base.createItem(i);
     }
 
     @Override
     public int size() {
-        if (base == null) {
-            return 0;
-        }
-
         return base.size();
     }
 
     @Override
-    protected boolean onTap(int arg0) {
-        if (base == null) {
-            return false;
-        }
-
+    protected boolean onTap(final int arg0) {
         return base.onTap(arg0);
     }
 
     @Override
-    protected void drawOverlayBitmap(Canvas canvas, Point drawPosition,
-            Projection projection, byte drawZoomLevel) {
+    protected void drawOverlayBitmap(final Canvas canvas, final Point drawPosition,
+            final Projection projection, final byte drawZoomLevel) {
         base.drawOverlayBitmap(canvas, drawPosition, new MapsforgeMapProjection(projection), drawZoomLevel);
     }
 
@@ -70,33 +61,28 @@ public class MapsforgeCacheOverlay extends ItemizedOverlay<MapsforgeCacheOverlay
     }
 
     @Override
-    public Drawable superBoundCenter(Drawable markerIn) {
-        return ItemizedOverlay.boundCenter(markerIn);
-    }
-
-    @Override
-    public Drawable superBoundCenterBottom(Drawable marker) {
+    public Drawable superBoundCenterBottom(final Drawable marker) {
         return ItemizedOverlay.boundCenterBottom(marker);
     }
 
     @Override
-    public void superSetLastFocusedItemIndex(int i) {
+    public void superSetLastFocusedItemIndex(final int i) {
         // nothing to do
     }
 
     @Override
-    public boolean superOnTap(int index) {
+    public boolean superOnTap(final int index) {
         return super.onTap(index);
     }
 
     @Override
-    public void superDraw(Canvas canvas, MapViewImpl mapView, boolean shadow) {
+    public void superDraw(final Canvas canvas, final MapViewImpl mapView, final boolean shadow) {
         // nothing to do here...
     }
 
     @Override
-    public void superDrawOverlayBitmap(Canvas canvas, Point drawPosition,
-            MapProjectionImpl projection, byte drawZoomLevel) {
+    public void superDrawOverlayBitmap(final Canvas canvas, final Point drawPosition,
+            final MapProjectionImpl projection, final byte drawZoomLevel) {
         super.drawOverlayBitmap(canvas, drawPosition, (Projection) projection.getImpl(), drawZoomLevel);
     }
 

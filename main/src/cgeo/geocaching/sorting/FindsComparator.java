@@ -1,32 +1,19 @@
 package cgeo.geocaching.sorting;
 
 import cgeo.geocaching.Geocache;
-import cgeo.geocaching.cgData;
-import cgeo.geocaching.enumerations.LogType;
 
-public class FindsComparator extends AbstractCacheComparator {
+class FindsComparator extends AbstractCacheComparator {
 
     @Override
-    protected boolean canCompare(Geocache cache1, Geocache cache2) {
-        return cache1.getLogCounts() != null && cache2.getLogCounts() != null;
+    protected boolean canCompare(final Geocache cache) {
+        return cache.getLogCounts() != null;
     }
 
     @Override
-    protected int compareCaches(Geocache cache1, Geocache cache2) {
-        int finds1 = getFindsCount(cache1);
-        int finds2 = getFindsCount(cache2);
+    protected int compareCaches(final Geocache cache1, final Geocache cache2) {
+        final int finds1 = cache1.getFindsCount();
+        final int finds2 = cache2.getFindsCount();
         return finds2 - finds1;
-    }
-
-    private static int getFindsCount(Geocache cache) {
-        if (cache.getLogCounts().isEmpty()) {
-            cache.setLogCounts(cgData.loadLogCounts(cache.getGeocode()));
-        }
-        Integer logged = cache.getLogCounts().get(LogType.FOUND_IT);
-        if (logged != null) {
-            return logged;
-        }
-        return 0;
     }
 
 }

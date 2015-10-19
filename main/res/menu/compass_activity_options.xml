@@ -1,36 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
-<menu xmlns:android="http://schemas.android.com/apk/res/android" >
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto" >
 
     <item
-        android:id="@+id/menu_switch_compass_gps"
-        android:icon="@drawable/ic_menu_compass"
-        android:title="@string/use_gps"> <!-- will be replaced in code -->
+        android:id="@+id/menu_hint"
+        android:icon="@drawable/ic_menu_hint"
+        android:title="@string/cache_hint"
+        app:showAsAction="ifRoom|withText">
     </item>
     <item
         android:id="@+id/menu_map"
         android:icon="@drawable/ic_menu_mapmode"
-        android:title="@string/caches_on_map">
-    </item>
-    <item
-        android:id="@+id/menu_edit_destination"
-        android:icon="@drawable/ic_menu_edit"
-        android:title="@string/destination_set">
-    </item>
-    <item
-        android:id="@+id/menu_select_destination"
-        android:icon="@drawable/ic_menu_myplaces"
-        android:title="@string/destination_select">
-        <menu/> <!-- filled dynamically -->
+        android:title="@string/caches_on_map"
+        app:showAsAction="ifRoom|withText">
     </item>
     <item
         android:id="@+id/menu_tts_start"
         android:icon="@drawable/ic_menu_start_conversation"
-        android:title="@string/tts_start">
+        android:title="@string/tts_start"
+        app:showAsAction="ifRoom|withText">
     </item>
     <item
         android:id="@+id/menu_tts_stop"
         android:icon="@drawable/ic_menu_start_conversation"
         android:title="@string/tts_stop"
-        android:visible="false">
+        android:visible="false"
+        app:showAsAction="ifRoom|withText">
     </item>
+    <item
+        android:id="@+id/menu_select_destination"
+        android:actionProviderClass="cgeo.geocaching.ui.WaypointSelectionActionProvider"
+        android:icon="@drawable/ic_menu_myplaces"
+        android:orderInCategory="999"
+        android:title="@string/destination_select"
+        android:visible="false"
+        app:actionProviderClass="cgeo.geocaching.ui.WaypointSelectionActionProvider"
+        app:showAsAction="ifRoom|withText">
+    </item>
+
 </menu>

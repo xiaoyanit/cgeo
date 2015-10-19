@@ -1,6 +1,6 @@
 package cgeo.geocaching;
 
-import cgeo.geocaching.geopoint.Geopoint;
+import cgeo.geocaching.location.Geopoint;
 
 public final class Destination implements ICoordinates {
 
@@ -8,7 +8,7 @@ public final class Destination implements ICoordinates {
     final private long date;
     final private Geopoint coords;
 
-    public Destination(long id, long date, final Geopoint coords) {
+    public Destination(final long id, final long date, final Geopoint coords) {
         this.id = id;
         this.date = date;
         this.coords = coords;

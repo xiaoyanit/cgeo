@@ -2,20 +2,22 @@ package cgeo.geocaching.apps;
 
 import cgeo.geocaching.Geocache;
 
+import org.eclipse.jdt.annotation.NonNull;
+
 public interface App {
     public boolean isInstalled();
 
-    public boolean isDefaultNavigationApp();
+    /**
+     * Whether or not an application can be used as the default navigation.
+     */
+    public boolean isUsableAsDefaultNavigationApp();
 
+    @NonNull
     public String getName();
 
-    int getId();
-
     /**
-     * whether or not the app can be used with the given cache (may depend on properties of the cache)
+     * Whether or not the app can be used with the given cache (may depend on properties of the cache).
      *
-     * @param cache
-     * @return
      */
-    boolean isEnabled(final Geocache cache);
+    boolean isEnabled(@NonNull final Geocache cache);
 }

@@ -1,7 +1,7 @@
 package cgeo.geocaching.maps.mapsforge;
 
-import cgeo.geocaching.maps.PositionOverlay;
-import cgeo.geocaching.maps.ScaleOverlay;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.maps.PositionAndScaleOverlay;
 import cgeo.geocaching.maps.interfaces.GeneralOverlay;
 import cgeo.geocaching.maps.interfaces.MapViewImpl;
 import cgeo.geocaching.maps.interfaces.OverlayImpl;
@@ -9,7 +9,6 @@ import cgeo.geocaching.maps.interfaces.OverlayImpl;
 import org.mapsforge.android.maps.Projection;
 import org.mapsforge.android.maps.overlay.Overlay;
 
-import android.app.Activity;
 import android.graphics.Canvas;
 import android.graphics.Point;
 
@@ -18,26 +17,16 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class MapsforgeOverlay extends Overlay implements OverlayImpl {
 
-    private GeneralOverlay overlayBase = null;
-    private Lock lock = new ReentrantLock();
+    private PositionAndScaleOverlay overlayBase = null;
+    private final Lock lock = new ReentrantLock();
 
-    public MapsforgeOverlay(Activity activityIn, OverlayImpl.overlayType ovlType) {
-
-        switch (ovlType) {
-            case PositionOverlay:
-                overlayBase = new PositionOverlay(activityIn, this);
-                break;
-            case ScaleOverlay:
-                overlayBase = new ScaleOverlay(activityIn, this);
-                break;
-            default:
-                throw new IllegalArgumentException();
-        }
+    public MapsforgeOverlay(final MapViewImpl mapView, final Geopoint coords, final String geocode) {
+        overlayBase = new PositionAndScaleOverlay(this, mapView, coords, geocode);
     }
 
     @Override
-    protected void drawOverlayBitmap(Canvas canvas, Point drawPosition,
-            Projection projection, byte drawZoomLevel) {
+    protected void drawOverlayBitmap(final Canvas canvas, final Point drawPosition,
+            final Projection projection, final byte drawZoomLevel) {
 
         if (overlayBase != null) {
             overlayBase.drawOverlayBitmap(canvas, drawPosition, new MapsforgeMapProjection(projection), drawZoomLevel);

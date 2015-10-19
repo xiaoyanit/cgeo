@@ -1,5 +1,7 @@
 package cgeo.calendar;
 
+import org.eclipse.jdt.annotation.NonNull;
+
 import android.content.ContentValues;
 import android.net.Uri;
 import android.text.Html;
@@ -8,14 +10,15 @@ import java.util.Date;
 
 class AddEntry extends AbstractAddEntry {
 
-    private int calendarId;
+    private final int calendarId;
 
     /**
      * @param entry
+     *         new entry to be stored
      * @param calendarId
-     *            The selected calendar
+     *         The selected calendar
      */
-    public AddEntry(CalendarEntry entry, CalendarActivity activity, int calendarId) {
+    public AddEntry(@NonNull final CalendarEntry entry, @NonNull final CalendarActivity activity, final int calendarId) {
         super(entry, activity);
         this.calendarId = calendarId;
     }
@@ -26,25 +29,25 @@ class AddEntry extends AbstractAddEntry {
 
         final Date eventDate = entry.parseDate();
         final String description = entry.parseDescription();
-        final String eventLocation = entry.parseLocation();
 
         // values
         final ContentValues event = new ContentValues();
         event.put("calendar_id", calendarId);
-        if (entry.getStartTimeMinutes() >= 0) {
-            event.put("dtstart", eventDate.getTime() + entry.getStartTimeMinutes() * 60000L);
-        }
-        else {
-            event.put("dtstart", eventDate.getTime() + 43200000); // noon
-            event.put("dtend", eventDate.getTime() + 43200000 + 3600000); // + one hour
+        final long eventTime = eventDate.getTime();
+        final int entryStartTimeMinutes = entry.getStartTimeMinutes();
+        if (entryStartTimeMinutes >= 0) {
+            event.put("dtstart", eventTime + entryStartTimeMinutes * 60000L);
+        } else {
+            event.put("dtstart", eventTime); // midnight
+            event.put("dtend", eventTime + 86400000); // + one day
             event.put("allDay", 1);
         }
         event.put("eventTimezone", "UTC");
         event.put("title", Html.fromHtml(entry.getName()).toString());
         event.put("description", description);
 
-        if (eventLocation.length() > 0) {
-            event.put("eventLocation", eventLocation);
+        if (entry.getCoords().length() > 0) {
+            event.put("eventLocation", entry.getCoords());
         }
         event.put("hasAlarm", 0);
 

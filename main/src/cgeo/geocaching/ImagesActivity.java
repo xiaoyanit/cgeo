@@ -1,10 +1,13 @@
 package cgeo.geocaching;
 
-import cgeo.geocaching.activity.AbstractActivity;
+import cgeo.geocaching.activity.AbstractActionBarActivity;
+import cgeo.geocaching.settings.Settings;
 import cgeo.geocaching.ui.ImagesList;
 import cgeo.geocaching.ui.ImagesList.ImageType;
 
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
+
+import rx.Subscription;
 
 import android.content.Context;
 import android.content.Intent;
@@ -17,15 +20,16 @@ import android.view.View;
 import java.util.ArrayList;
 import java.util.List;
 
-public class ImagesActivity extends AbstractActivity {
+public class ImagesActivity extends AbstractActionBarActivity {
 
     private boolean offline;
-    private ArrayList<Image> imageNames;
-    private ImagesList imagesList;
+    private List<Image> imageNames;
     private ImageType imgType = ImageType.SpoilerImages;
+    private ImagesList imagesList;
+    private Subscription subscription;
 
     @Override
-    public void onCreate(Bundle savedInstanceState) {
+    public void onCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         // get parameters
@@ -45,7 +49,7 @@ public class ImagesActivity extends AbstractActivity {
 
         // init
         setTheme();
-        setContentView(R.layout.spoilers);
+        setContentView(R.layout.images_activity);
         setTitle(res.getString(imgType.getTitle()));
 
         imagesList = new ImagesList(this, geocode);
@@ -57,27 +61,30 @@ public class ImagesActivity extends AbstractActivity {
             return;
         }
 
-        offline = cgData.isOffline(geocode, null) && (imgType == ImageType.SpoilerImages || Settings.isStoreLogImages());
+        offline = DataStore.isOffline(geocode, null) && (imgType == ImageType.SpoilerImages
+                || Settings.isStoreLogImages());
+
     }
 
     @Override
     public void onStart() {
         super.onStart();
-        imagesList.loadImages(findViewById(R.id.spoiler_list), imageNames, offline);
+        subscription = imagesList.loadImages(findViewById(R.id.spoiler_list), imageNames, offline);
     }
 
     @Override
     public void onStop() {
         // Reclaim native memory faster than the finalizers would
-        imagesList.removeAllViews();
+        subscription.unsubscribe();
         super.onStop();
     }
 
-    public static void startActivityLogImages(final Context fromActivity, final String geocode, List<Image> logImages) {
+    public static void startActivityLogImages(final Context fromActivity, final String geocode, final List<Image> logImages) {
         startActivity(fromActivity, geocode, logImages, ImageType.LogImages);
     }
 
-    private static void startActivity(final Context fromActivity, final String geocode, List<Image> logImages, ImageType imageType) {
+    @SuppressWarnings("deprecation")
+    private static void startActivity(final Context fromActivity, final String geocode, final List<Image> logImages, final ImageType imageType) {
         final Intent logImgIntent = new Intent(fromActivity, ImagesActivity.class);
         // if resuming our app within this activity, finish it and return to the cache activity
         logImgIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_WHEN_TASK_RESET)
@@ -85,23 +92,23 @@ public class ImagesActivity extends AbstractActivity {
                 .putExtra(Intents.EXTRA_TYPE, imageType);
 
         // avoid forcing the array list as parameter type
-        final ArrayList<Image> arrayList = new ArrayList<Image>(logImages);
+        final ArrayList<Image> arrayList = new ArrayList<>(logImages);
         logImgIntent.putParcelableArrayListExtra(Intents.EXTRA_IMAGES, arrayList);
         fromActivity.startActivity(logImgIntent);
     }
 
-    public static void startActivitySpoilerImages(final Context fromActivity, String geocode, List<Image> spoilers) {
+    public static void startActivitySpoilerImages(final Context fromActivity, final String geocode, final List<Image> spoilers) {
         startActivity(fromActivity, geocode, spoilers, ImageType.SpoilerImages);
     }
 
     @Override
-    public void onCreateContextMenu(ContextMenu menu, View v, ContextMenuInfo menuInfo) {
+    public void onCreateContextMenu(final ContextMenu menu, final View v, final ContextMenuInfo menuInfo) {
         super.onCreateContextMenu(menu, v, menuInfo);
         imagesList.onCreateContextMenu(menu, v);
     }
 
     @Override
-    public boolean onContextItemSelected(MenuItem item) {
+    public boolean onContextItemSelected(final MenuItem item) {
         if (imagesList.onContextItemSelected(item)) {
             return true;
         }

@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
-    android:orientation="vertical" >
+    android:orientation="vertical"
+    android:background="?background_color"
+    tools:context=".files.AbstractFileListActivity" >
 
-    <include layout="@layout/actionbar"/>
+    <Button
+        android:id="@+id/select_dir"
+        style="@style/button_full"
+        android:visibility="gone" />
 
     <ListView
         android:id="@android:id/list"
@@ -13,7 +19,9 @@
         android:layout_margin="0dip"
         android:background="?background_color"
         android:cacheColorHint="?background_color"
+        android:clipToPadding="false"
         android:dividerHeight="1dip"
-        android:padding="0dip" />
+        android:padding="0dip"
+        android:scrollbarStyle="outsideOverlay" />
 
 </LinearLayout>

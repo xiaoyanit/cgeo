@@ -1,6 +1,6 @@
 package cgeo.geocaching.maps.mapsforge;
 
-import cgeo.geocaching.R;
+import cgeo.geocaching.activity.ActivityMixin;
 import cgeo.geocaching.activity.FilteredActivity;
 import cgeo.geocaching.maps.AbstractMap;
 import cgeo.geocaching.maps.CGeoMap;
@@ -16,7 +16,7 @@ import android.view.View;
 
 public class MapsforgeMapActivity extends MapActivity implements MapActivityImpl, FilteredActivity {
 
-    private AbstractMap mapBase;
+    private final AbstractMap mapBase;
 
     public MapsforgeMapActivity() {
         mapBase = new CGeoMap(this);
@@ -28,7 +28,7 @@ public class MapsforgeMapActivity extends MapActivity implements MapActivityImpl
     }
 
     @Override
-    protected void onCreate(Bundle icicle) {
+    protected void onCreate(final Bundle icicle) {
         mapBase.onCreate(icicle);
     }
 
@@ -53,17 +53,17 @@ public class MapsforgeMapActivity extends MapActivity implements MapActivityImpl
     }
 
     @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
+    public boolean onCreateOptionsMenu(final Menu menu) {
         return mapBase.onCreateOptionsMenu(menu);
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    public boolean onOptionsItemSelected(final MenuItem item) {
         return mapBase.onOptionsItemSelected(item);
     }
 
     @Override
-    public boolean onPrepareOptionsMenu(Menu menu) {
+    public boolean onPrepareOptionsMenu(final Menu menu) {
         return mapBase.onPrepareOptionsMenu(menu);
     }
 
@@ -73,15 +73,13 @@ public class MapsforgeMapActivity extends MapActivity implements MapActivityImpl
     }
 
     @Override
-    public void superOnCreate(Bundle savedInstanceState) {
+    public void superOnCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
     }
 
     @Override
-    public boolean superOnCreateOptionsMenu(Menu menu) {
-        final boolean result = super.onCreateOptionsMenu(menu);
-        getMenuInflater().inflate(R.menu.map_activity, menu);
-        return result;
+    public boolean superOnCreateOptionsMenu(final Menu menu) {
+        return super.onCreateOptionsMenu(menu);
     }
 
     @Override
@@ -90,7 +88,7 @@ public class MapsforgeMapActivity extends MapActivity implements MapActivityImpl
     }
 
     @Override
-    public boolean superOnOptionsItemSelected(MenuItem item) {
+    public boolean superOnOptionsItemSelected(final MenuItem item) {
         return super.onOptionsItemSelected(item);
     }
 
@@ -110,18 +108,17 @@ public class MapsforgeMapActivity extends MapActivity implements MapActivityImpl
     }
 
     @Override
-    public boolean superOnPrepareOptionsMenu(Menu menu) {
+    public boolean superOnPrepareOptionsMenu(final Menu menu) {
         return super.onPrepareOptionsMenu(menu);
     }
 
-    // close activity and open homescreen
     @Override
-    public void goHome(View view) {
-        mapBase.goHome(view);
+    public void navigateUp(final View view) {
+        ActivityMixin.navigateUp(this);
     }
 
     @Override
-    public void showFilterMenu(View view) {
+    public void showFilterMenu(final View view) {
         // do nothing, the filter bar only shows the global filter
     }
 }

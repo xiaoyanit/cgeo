@@ -1,38 +1,42 @@
 package cgeo.geocaching.connector;
 
 import cgeo.geocaching.Geocache;
-import cgeo.geocaching.ICache;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.NonNull;
 
-public class GeocachingAustraliaConnector extends AbstractConnector {
+class GeocachingAustraliaConnector extends AbstractConnector {
 
     @Override
+    @NonNull
     public String getName() {
         return "Geocaching Australia";
     }
 
     @Override
-    public String getCacheUrl(final Geocache cache) {
+    @NonNull
+    public String getCacheUrl(final @NonNull Geocache cache) {
         return getCacheUrlPrefix() + cache.getGeocode();
     }
 
     @Override
+    @NonNull
     public String getHost() {
         return "geocaching.com.au";
     }
 
     @Override
-    public boolean isOwner(final ICache cache) {
+    public boolean isOwner(@NonNull final Geocache cache) {
         return false;
     }
 
     @Override
-    public boolean canHandle(final String geocode) {
+    public boolean canHandle(final @NonNull String geocode) {
         return (StringUtils.startsWithIgnoreCase(geocode, "GA") || StringUtils.startsWithIgnoreCase(geocode, "TP")) && isNumericId(geocode.substring(2));
     }
 
     @Override
+    @NonNull
     protected String getCacheUrlPrefix() {
         return "http://" + getHost() + "/cache/";
     }

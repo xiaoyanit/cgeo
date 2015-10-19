@@ -1,15 +1,17 @@
 package cgeo.geocaching.ui;
 
+import butterknife.Bind;
+
+import cgeo.geocaching.CacheListActivity;
 import cgeo.geocaching.R;
-import cgeo.geocaching.cgeoapplication;
-import cgeo.geocaching.cgeocaches;
-import cgeo.geocaching.geopoint.Geopoint;
-import cgeo.geocaching.geopoint.Units;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.location.Units;
+import cgeo.geocaching.sensors.Sensors;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.NonNull;
 
 import android.app.Activity;
-import android.content.Context;
 import android.location.Address;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -18,21 +20,26 @@ import android.widget.ArrayAdapter;
 import android.widget.TextView;
 
 import java.util.ArrayList;
+import java.util.List;
 
 public class AddressListAdapter extends ArrayAdapter<Address> {
 
     final private LayoutInflater inflater;
-    final private Geopoint location;
+    @NonNull final private Geopoint location;
 
-    private static final class ViewHolder {
-        TextView label;
-        TextView distance;
+    protected static final class ViewHolder extends AbstractViewHolder {
+        @Bind(R.id.label) protected TextView label;
+        @Bind(R.id.distance) protected TextView distance;
+
+        public ViewHolder(final View view) {
+            super(view);
+        }
     }
 
-    public AddressListAdapter(final Context context) {
+    public AddressListAdapter(final Activity context) {
         super(context, 0);
-        inflater = ((Activity) context).getLayoutInflater();
-        location = cgeoapplication.getInstance().currentGeo().getCoords();
+        inflater = context.getLayoutInflater();
+        location = Sensors.getInstance().currentGeo().getCoords();
     }
 
     @Override
@@ -44,13 +51,8 @@ public class AddressListAdapter extends ArrayAdapter<Address> {
         // holder pattern implementation
         final ViewHolder holder;
         if (view == null) {
-            view = inflater.inflate(R.layout.addresses_item, null);
-
-            holder = new ViewHolder();
-            holder.label = (TextView) view.findViewById(R.id.label);
-            holder.distance = (TextView) view.findViewById(R.id.distance);
-
-            view.setTag(holder);
+            view = inflater.inflate(R.layout.addresslist_item, parent, false);
+            holder = new ViewHolder(view);
         } else {
             holder = (ViewHolder) view.getTag();
         }
@@ -60,7 +62,7 @@ public class AddressListAdapter extends ArrayAdapter<Address> {
             @Override
             public void onClick(final View v) {
                 final Activity activity = (Activity) v.getContext();
-                cgeocaches.startActivityAddress(activity, new Geopoint(address.getLatitude(), address.getLongitude()), StringUtils.defaultString(address.getAddressLine(0)));
+                CacheListActivity.startActivityAddress(activity, new Geopoint(address.getLatitude(), address.getLongitude()), StringUtils.defaultString(address.getAddressLine(0)));
                 activity.finish();
             }
         });
@@ -72,7 +74,7 @@ public class AddressListAdapter extends ArrayAdapter<Address> {
     }
 
     private CharSequence getDistanceText(final Address address) {
-        if (location != null && address.hasLatitude() && address.hasLongitude()) {
+        if (address.hasLatitude() && address.hasLongitude()) {
             return Units.getDistanceFromKilometers(location.distanceTo(new Geopoint(address.getLatitude(), address.getLongitude())));
         }
 
@@ -81,7 +83,7 @@ public class AddressListAdapter extends ArrayAdapter<Address> {
 
     private static CharSequence getAddressText(final Address address) {
         final int maxIndex = address.getMaxAddressLineIndex();
-        final ArrayList<String> lines = new ArrayList<String>();
+        final List<String> lines = new ArrayList<>();
         for (int i = 0; i <= maxIndex; i++) {
             final String line = address.getAddressLine(i);
             if (StringUtils.isNotBlank(line)) {

@@ -1,6 +1,9 @@
 package cgeo.geocaching.utils;
 
-import cgeo.geocaching.cgeoapplication;
+import cgeo.geocaching.CgeoApplication;
+
+import rx.Subscription;
+import rx.subscriptions.CompositeSubscription;
 
 import android.os.Handler;
 import android.os.Message;
@@ -11,8 +14,10 @@ import android.os.Message;
  */
 public abstract class CancellableHandler extends Handler {
 
+    public static final int DONE = -1000;
     protected static final int UPDATE_LOAD_PROGRESS_DETAIL = 42186;
     private volatile boolean cancelled = false;
+    private final CompositeSubscription subscriptions = new CompositeSubscription();
 
     private static class CancelHolder {
         final Object payload;
@@ -30,9 +35,21 @@ public abstract class CancellableHandler extends Handler {
 
         if (message.obj instanceof CancelHolder) {
             cancelled = true;
+            subscriptions.unsubscribe();
             handleCancel(((CancelHolder) message.obj).payload);
         } else {
             handleRegularMessage(message);
+        }
+    }
+
+    /**
+     * Add a subscription to the list of subscriptions to be subscribed at cancellation time.
+     */
+    final public void unsubscribeIfCancelled(final Subscription subscription) {
+        subscriptions.add(subscription);
+        if (cancelled) {
+            // Protect against race conditions
+            subscriptions.unsubscribe();
         }
     }
 
@@ -72,24 +89,14 @@ public abstract class CancellableHandler extends Handler {
      * @return a cancel message
      */
     public Message cancelMessage(final Object extra) {
-        return this.obtainMessage(0, new CancelHolder(extra));
+        return obtainMessage(0, new CancelHolder(extra));
     }
 
     /**
      * Cancel the current handler. This can be called from any thread.
      */
     public void cancel() {
-        cancel(null);
-    }
-
-    /**
-     * Cancel the current handler. This can be called from any thread.
-     *
-     * @param extra
-     *            the extra parameter to give to the cancel handler
-     */
-    public void cancel(final Object extra) {
-        cancelMessage(extra).sendToTarget();
+        cancelMessage().sendToTarget();
     }
 
     /**
@@ -114,7 +121,7 @@ public abstract class CancellableHandler extends Handler {
 
     public static void sendLoadProgressDetail(final Handler handler, final int resourceId) {
         if (null != handler) {
-            handler.obtainMessage(UPDATE_LOAD_PROGRESS_DETAIL, cgeoapplication.getInstance().getString(resourceId)).sendToTarget();
+            handler.obtainMessage(UPDATE_LOAD_PROGRESS_DETAIL, CgeoApplication.getInstance().getString(resourceId)).sendToTarget();
         }
     }
 }

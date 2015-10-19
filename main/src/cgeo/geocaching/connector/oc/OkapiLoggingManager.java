@@ -1,68 +1,69 @@
 package cgeo.geocaching.connector.oc;
 
 import cgeo.geocaching.Geocache;
+import cgeo.geocaching.Image;
+import cgeo.geocaching.LogCacheActivity;
 import cgeo.geocaching.TrackableLog;
-import cgeo.geocaching.VisitCacheActivity;
-import cgeo.geocaching.connector.ILoggingManager;
+import cgeo.geocaching.connector.AbstractLoggingManager;
 import cgeo.geocaching.connector.ImageResult;
 import cgeo.geocaching.connector.LogResult;
 import cgeo.geocaching.enumerations.LogType;
 import cgeo.geocaching.enumerations.StatusCode;
 
-import android.app.Activity;
-import android.net.Uri;
+import org.eclipse.jdt.annotation.NonNull;
+import org.eclipse.jdt.annotation.Nullable;
 
-import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.List;
 
-public class OkapiLoggingManager implements ILoggingManager {
+public class OkapiLoggingManager extends AbstractLoggingManager {
 
-    private final OCApiConnector connector;
+    private final OCApiLiveConnector connector;
     private final Geocache cache;
-    private VisitCacheActivity activity;
+    private final LogCacheActivity activity;
+    private boolean hasLoaderError = true;
 
-    private final static List<LogType> standardLogTypes = Arrays.asList(LogType.FOUND_IT, LogType.DIDNT_FIND_IT, LogType.NOTE, LogType.NEEDS_MAINTENANCE);
-    private final static List<LogType> eventLogTypes = Arrays.asList(LogType.WILL_ATTEND, LogType.ATTENDED, LogType.NOTE);
-
-    public OkapiLoggingManager(Activity activity, OCApiConnector connector, Geocache cache) {
+    public OkapiLoggingManager(final LogCacheActivity activity, final OCApiLiveConnector connector, final Geocache cache) {
         this.connector = connector;
         this.cache = cache;
-        this.activity = (VisitCacheActivity) activity;
+        this.activity = activity;
     }
 
     @Override
-    public void init() {
+    public final void init() {
+        if (connector.isLoggedIn()) {
+            hasLoaderError = false;
+        }
         activity.onLoadFinished();
     }
 
     @Override
-    public LogResult postLog(Geocache cache, LogType logType, Calendar date, String log, List<TrackableLog> trackableLogs) {
-        return OkapiClient.postLog(cache, logType, date, log, connector);
+    @NonNull
+    public final LogResult postLog(@NonNull final LogType logType, @NonNull final Calendar date, @NonNull final String log, @Nullable final String logPassword, @NonNull final List<TrackableLog> trackableLogs) {
+        final LogResult result = OkapiClient.postLog(cache, logType, date, log, logPassword, connector);
+        connector.login(null, null);
+        return result;
     }
 
     @Override
-    public ImageResult postLogImage(String logId, String imageCaption, String imageDescription, Uri imageUri) {
+    @NonNull
+    public final ImageResult postLogImage(final String logId, final Image image) {
         return new ImageResult(StatusCode.LOG_POST_ERROR, "");
     }
 
     @Override
-    public boolean hasLoaderError() {
-        return false;
-    }
-
-    @Override
-    public List<TrackableLog> getTrackables() {
-        return Collections.emptyList();
-    }
-
-    @Override
+    @NonNull
     public List<LogType> getPossibleLogTypes() {
-        if (cache.isEventCache()) {
-            return eventLogTypes;
+        if (hasLoaderError) {
+            return Collections.emptyList();
         }
-
-        return standardLogTypes;
+        return connector.getPossibleLogTypes(cache);
     }
+
+    @Override
+    public boolean hasLoaderError() {
+        return hasLoaderError;
+    }
+
 }

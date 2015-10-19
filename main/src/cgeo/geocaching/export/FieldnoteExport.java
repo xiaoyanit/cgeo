@@ -1,59 +1,55 @@
 package cgeo.geocaching.export;
 
+import cgeo.geocaching.CgeoApplication;
+import cgeo.geocaching.DataStore;
 import cgeo.geocaching.Geocache;
 import cgeo.geocaching.LogEntry;
 import cgeo.geocaching.R;
-import cgeo.geocaching.cgData;
 import cgeo.geocaching.activity.ActivityMixin;
-import cgeo.geocaching.connector.gc.Login;
-import cgeo.geocaching.enumerations.StatusCode;
-import cgeo.geocaching.network.Network;
-import cgeo.geocaching.network.Parameters;
+import cgeo.geocaching.connector.ConnectorFactory;
+import cgeo.geocaching.connector.IConnector;
+import cgeo.geocaching.connector.capability.FieldNotesCapability;
+import cgeo.geocaching.settings.Settings;
 import cgeo.geocaching.utils.AsyncTaskWithProgress;
-import cgeo.geocaching.utils.IOUtils;
+import cgeo.geocaching.utils.Formatter;
 import cgeo.geocaching.utils.Log;
 
-import org.apache.commons.lang3.CharEncoding;
-import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.Nullable;
 
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.content.Context;
 import android.content.DialogInterface;
+import android.os.Build.VERSION;
+import android.os.Build.VERSION_CODES;
 import android.os.Environment;
 import android.view.ContextThemeWrapper;
 import android.view.View;
 import android.widget.CheckBox;
+import android.widget.TextView;
 
-import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.TimeZone;
+
+import butterknife.ButterKnife;
 
 /**
- * Exports offline-logs in the Groundspeak Field Note format.<br>
- * <br>
+ * Exports offline logs in the Groundspeak Field Note format.
  *
- * Field Notes are simple plain text files, but poorly documented. Syntax:<br>
- * <code>GCxxxxx,yyyy-mm-ddThh:mm:ssZ,Found it,"logtext"</code>
  */
-class FieldnoteExport extends AbstractExport {
+public class FieldnoteExport extends AbstractExport {
     private static final File exportLocation = new File(Environment.getExternalStorageDirectory().getAbsolutePath() + "/field-notes");
-    private static final SimpleDateFormat fieldNoteDateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
-    static {
-        fieldNoteDateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-    }
+    private static int fieldNotesCount = 0;
+    private final String fileName;
 
-    protected FieldnoteExport() {
-        super(getString(R.string.export_fieldnotes));
+    public FieldnoteExport() {
+        super(R.string.export_fieldnotes);
+        final SimpleDateFormat fileNameDateFormat = new SimpleDateFormat("yyyyMMddHHmmss", Locale.US);
+        fileName = fileNameDateFormat.format(new Date()) + ".txt";
     }
 
     @Override
@@ -70,32 +66,40 @@ class FieldnoteExport extends AbstractExport {
     }
 
     private Dialog getExportOptionsDialog(final Geocache[] caches, final Activity activity) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+        final AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+        builder.setTitle(activity.getString(R.string.export_confirm_title, activity.getString(R.string.export_fieldnotes)));
 
-        // AlertDialog has always dark style, so we have to apply it as well always
-        View layout = View.inflate(new ContextThemeWrapper(activity, R.style.dark), R.layout.fieldnote_export_dialog, null);
+        final Context themedContext;
+        if (Settings.isLightSkin() && VERSION.SDK_INT < VERSION_CODES.HONEYCOMB) {
+            themedContext = new ContextThemeWrapper(activity, R.style.dark);
+        } else {
+            themedContext = activity;
+        }
+        final View layout = View.inflate(themedContext, R.layout.fieldnote_export_dialog, null);
         builder.setView(layout);
 
-        final CheckBox uploadOption = (CheckBox) layout.findViewById(R.id.upload);
-        final CheckBox onlyNewOption = (CheckBox) layout.findViewById(R.id.onlynew);
+        final TextView text = ButterKnife.findById(layout, R.id.info);
+        text.setText(activity.getString(R.string.export_confirm_message, exportLocation.getAbsolutePath(), fileName));
 
-        uploadOption.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                onlyNewOption.setEnabled(uploadOption.isChecked());
-            }
-        });
+        final CheckBox uploadOption = ButterKnife.findById(layout, R.id.upload);
+        uploadOption.setChecked(Settings.getFieldNoteExportUpload());
+        final CheckBox onlyNewOption = ButterKnife.findById(layout, R.id.onlynew);
+        onlyNewOption.setChecked(Settings.getFieldNoteExportOnlyNew());
+
+        if (Settings.getFieldnoteExportDate() > 0) {
+            onlyNewOption.setText(activity.getString(R.string.export_fieldnotes_onlynew) + " (" + Formatter.formatDateTime(Settings.getFieldnoteExportDate()) + ')');
+        }
 
         builder.setPositiveButton(R.string.export, new DialogInterface.OnClickListener() {
 
             @Override
-            public void onClick(DialogInterface dialog, int which) {
+            public void onClick(final DialogInterface dialog, final int which) {
+                final boolean upload = uploadOption.isChecked();
+                final boolean onlyNew = onlyNewOption.isChecked();
+                Settings.setFieldNoteExportUpload(upload);
+                Settings.setFieldNoteExportOnlyNew(onlyNew);
                 dialog.dismiss();
-                new ExportTask(
-                        activity,
-                        uploadOption.isChecked(),
-                        onlyNewOption.isChecked())
-                        .execute(caches);
+                new ExportTask(activity, upload, onlyNew).execute(caches);
             }
         });
 
@@ -103,7 +107,6 @@ class FieldnoteExport extends AbstractExport {
     }
 
     private class ExportTask extends AsyncTaskWithProgress<Geocache, Boolean> {
-        private final Activity activity;
         private final boolean upload;
         private final boolean onlyNew;
         private File exportFile;
@@ -120,97 +123,52 @@ class FieldnoteExport extends AbstractExport {
          * @param onlyNew
          *            Upload/export only new logs since last export
          */
-        public ExportTask(final Activity activity, final boolean upload, final boolean onlyNew) {
-            super(activity, getProgressTitle(), getString(R.string.export_fieldnotes_creating));
-            this.activity = activity;
+        public ExportTask(@Nullable final Activity activity, final boolean upload, final boolean onlyNew) {
+            super(activity, getProgressTitle(), CgeoApplication.getInstance().getString(R.string.export_fieldnotes_creating), true);
             this.upload = upload;
             this.onlyNew = onlyNew;
         }
 
         @Override
-        protected Boolean doInBackgroundInternal(Geocache[] caches) {
-            final StringBuilder fieldNoteBuffer = new StringBuilder();
+        protected Boolean doInBackgroundInternal(final Geocache[] caches) {
+            // export field notes separately for each connector, so the file can be uploaded to the respective site afterwards
+            for (final IConnector connector : ConnectorFactory.getConnectors()) {
+                if (connector instanceof FieldNotesCapability) {
+                    exportFieldNotes((FieldNotesCapability) connector, caches);
+                }
+            }
+            return true;
+        }
+
+        private boolean exportFieldNotes(final FieldNotesCapability connector, final Geocache[] caches) {
+            final FieldNotes fieldNotes = new FieldNotes();
             try {
                 int i = 0;
-                for (Geocache cache : caches) {
-                    if (cache.isLogOffline()) {
-                        appendFieldNote(fieldNoteBuffer, cache, cgData.loadLogOffline(cache.getGeocode()));
-                        publishProgress(++i);
+                for (final Geocache cache : caches) {
+                    if (ConnectorFactory.getConnector(cache).equals(connector) && cache.isLogOffline()) {
+                        final LogEntry log = DataStore.loadLogOffline(cache.getGeocode());
+                        if (log != null) {
+                            if (!onlyNew || log.date > Settings.getFieldnoteExportDate()) {
+                                fieldNotes.add(cache, log);
+                            }
+                        }
                     }
+                    publishProgress(++i);
                 }
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 Log.e("FieldnoteExport.ExportTask generation", e);
                 return false;
             }
+            fieldNotesCount += fieldNotes.size();
 
-            fieldNoteBuffer.append('\n');
-
-            if (!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
+            exportFile = fieldNotes.writeToDirectory(exportLocation, fileName);
+            if (exportFile == null) {
                 return false;
-            }
-
-            exportLocation.mkdirs();
-
-            SimpleDateFormat fileNameDateFormat = new SimpleDateFormat("yyyyMMddHHmmss", Locale.US);
-            exportFile = new File(exportLocation.toString() + '/' + fileNameDateFormat.format(new Date()) + ".txt");
-
-            Writer fileWriter = null;
-            BufferedOutputStream buffer = null;
-            try {
-                OutputStream os = new FileOutputStream(exportFile);
-                buffer = new BufferedOutputStream(os);
-                fileWriter = new OutputStreamWriter(buffer, CharEncoding.UTF_16);
-                fileWriter.write(fieldNoteBuffer.toString());
-            } catch (IOException e) {
-                Log.e("FieldnoteExport.ExportTask export", e);
-                return false;
-            } finally {
-                IOUtils.closeQuietly(fileWriter);
-                IOUtils.closeQuietly(buffer);
             }
 
             if (upload) {
                 publishProgress(STATUS_UPLOAD);
-
-                if (!Login.isActualLoginStatus()) {
-                    // no need to upload (possibly large file) if we're not logged in
-                    final StatusCode loginState = Login.login();
-                    if (loginState != StatusCode.NO_ERROR) {
-                        Log.e("FieldnoteExport.ExportTask upload: Login failed");
-                    }
-                }
-
-                final String uri = "http://www.geocaching.com/my/uploadfieldnotes.aspx";
-                String page = Network.getResponseData(Network.getRequest(uri));
-
-                if (!Login.getLoginStatus(page)) {
-                    // Login.isActualLoginStatus() was wrong, we are not logged in
-                    final StatusCode loginState = Login.login();
-                    if (loginState == StatusCode.NO_ERROR) {
-                        page = Network.getResponseData(Network.getRequest(uri));
-                    } else {
-                        Log.e("FieldnoteExport.ExportTask upload: No login (error: " + loginState + ')');
-                        return false;
-                    }
-                }
-
-                final String[] viewstates = Login.getViewstates(page);
-
-                final Parameters uploadParams = new Parameters(
-                        "__EVENTTARGET", "",
-                        "__EVENTARGUMENT", "",
-                        "ctl00$ContentBody$btnUpload", "Upload Field Note");
-
-                if (onlyNew) {
-                    uploadParams.put("ctl00$ContentBody$chkSuppressDate", "on");
-                }
-
-                Login.putViewstates(uploadParams, viewstates);
-
-                Network.getResponseData(Network.postRequest(uri, uploadParams, "ctl00$ContentBody$FieldNoteLoader", "text/plain", exportFile));
-
-                if (StringUtils.isBlank(page)) {
-                    Log.e("FieldnoteExport.ExportTask upload: No data from server");
+                if (!connector.uploadFieldNotes(exportFile)) {
                     return false;
                 }
             }
@@ -219,44 +177,29 @@ class FieldnoteExport extends AbstractExport {
         }
 
         @Override
-        protected void onPostExecuteInternal(Boolean result) {
+        protected void onPostExecuteInternal(final Boolean result) {
             if (null != activity) {
+                final Context nonNullActivity = activity;
                 if (result) {
-                    //                    if (onlyNew) {
-                    //                        // update last export time in settings when doing it ourself (currently we use the date check from gc.com)
-                    //                    }
+                    Settings.setFieldnoteExportDate(System.currentTimeMillis());
 
-                    ActivityMixin.showToast(activity, getName() + ' ' + getString(R.string.export_exportedto) + ": " + exportFile.toString());
+                    ActivityMixin.showToast(activity, getName() + ' ' + nonNullActivity.getString(R.string.export_exportedto) + ": " + exportFile.toString());
 
                     if (upload) {
-                        ActivityMixin.showToast(activity, getString(R.string.export_fieldnotes_upload_success));
+                        ActivityMixin.showToast(activity, nonNullActivity.getString(R.string.export_fieldnotes_upload_success));
                     }
                 } else {
-                    ActivityMixin.showToast(activity, getString(R.string.export_failed));
+                    ActivityMixin.showToast(activity, nonNullActivity.getString(R.string.export_failed));
                 }
             }
         }
 
         @Override
-        protected void onProgressUpdateInternal(int status) {
+        protected void onProgressUpdateInternal(final Integer status) {
             if (null != activity) {
-                if (STATUS_UPLOAD == status) {
-                    setMessage(getString(R.string.export_fieldnotes_uploading));
-                } else {
-                    setMessage(getString(R.string.export_fieldnotes_creating) + " (" + status + ')');
-                }
+                setMessage(activity.getString(STATUS_UPLOAD == status ? R.string.export_fieldnotes_uploading : R.string.export_fieldnotes_creating) + " (" + fieldNotesCount + ')');
             }
         }
     }
 
-    static void appendFieldNote(final StringBuilder fieldNoteBuffer, final Geocache cache, final LogEntry log) {
-        fieldNoteBuffer.append(cache.getGeocode())
-                .append(',')
-                .append(fieldNoteDateFormat.format(new Date(log.date)))
-                .append(',')
-                .append(StringUtils.capitalize(log.type.type))
-                .append(",\"")
-                .append(StringUtils.replaceChars(log.log, '"', '\''))
-                .append("\"\n");
-    }
 }

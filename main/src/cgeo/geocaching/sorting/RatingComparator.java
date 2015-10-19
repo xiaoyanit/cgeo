@@ -6,12 +6,7 @@ import cgeo.geocaching.Geocache;
  * sorts caches by gcvote.com rating
  *
  */
-public class RatingComparator extends AbstractCacheComparator {
-
-    @Override
-    protected boolean canCompare(final Geocache cache1, final Geocache cache2) {
-        return true;
-    }
+class RatingComparator extends AbstractCacheComparator {
 
     @Override
     protected int compareCaches(final Geocache cache1, final Geocache cache2) {

@@ -1,59 +1,62 @@
 package cgeo.geocaching.connector.oc;
 
+import cgeo.geocaching.Intents;
 import cgeo.geocaching.R;
-import cgeo.geocaching.Settings;
-import cgeo.geocaching.cgeoapplication;
-import cgeo.geocaching.network.OAuthAuthorizationActivity;
+import cgeo.geocaching.activity.OAuthAuthorizationActivity;
+import cgeo.geocaching.connector.oc.OkapiError.OkapiErrors;
+import cgeo.geocaching.settings.Settings;
 
+import ch.boye.httpclientandroidlib.HttpResponse;
+
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.eclipse.jdt.annotation.Nullable;
+
+import android.os.Bundle;
 
 public class OCAuthorizationActivity extends OAuthAuthorizationActivity {
 
-    private final int siteResId = R.string.auth_ocde;
+    private int titleResId;
+    private int tokenPublicPrefKey;
+    private int tokenSecretPrefKey;
+    private int tempTokenPublicPrefKey;
+    private int tempTokenSecretPrefKey;
 
-    public OCAuthorizationActivity() {
-        super("www.opencaching.de",
-                "/okapi/services/oauth/request_token",
-                "/okapi/services/oauth/authorize",
-                "/okapi/services/oauth/access_token",
-                false,
-                cgeoapplication.getInstance().getResources().getString(R.string.oc_de_okapi_consumer_key),
-                cgeoapplication.getInstance().getResources().getString(R.string.oc_de_okapi_consumer_secret));
+    @Override
+    public void onCreate(final Bundle savedInstanceState) {
+
+        final Bundle extras = getIntent().getExtras();
+        if (extras != null) {
+            titleResId = extras.getInt(Intents.EXTRA_OAUTH_TITLE_RES_ID);
+            tokenPublicPrefKey = extras.getInt(Intents.EXTRA_OAUTH_TOKEN_PUBLIC_KEY);
+            tokenSecretPrefKey = extras.getInt(Intents.EXTRA_OAUTH_TOKEN_SECRET_KEY);
+            tempTokenPublicPrefKey = extras.getInt(Intents.EXTRA_OAUTH_TEMP_TOKEN_KEY_PREF);
+            tempTokenSecretPrefKey = extras.getInt(Intents.EXTRA_OAUTH_TEMP_TOKEN_SECRET_PREF);
+        }
+        super.onCreate(savedInstanceState);
     }
 
     @Override
-    protected ImmutablePair<String, String> getTempToken() {
-        return Settings.getTempOCDEToken();
+    protected ImmutablePair<String, String> getTempTokens() {
+        return Settings.getTokenPair(tempTokenPublicPrefKey, tempTokenSecretPrefKey);
     }
 
     @Override
-    protected void setTempTokens(String tokenPublic, String tokenSecret) {
-        Settings.setOCDETempTokens(tokenPublic, tokenSecret);
+    protected void setTempTokens(@Nullable final String tokenPublic, @Nullable final String tokenSecret) {
+        Settings.setTokens(tempTokenPublicPrefKey, tokenPublic, tempTokenSecretPrefKey, tokenSecret);
     }
 
     @Override
-    protected void setTokens(String tokenPublic, String tokenSecret, boolean enable) {
-        Settings.setOCDETokens(tokenPublic, tokenSecret, enable);
+    protected void setTokens(@Nullable final String tokenPublic, @Nullable final String tokenSecret, final boolean enable) {
+        Settings.setTokens(tokenPublicPrefKey, tokenPublic, tokenSecretPrefKey, tokenSecret);
+        if (tokenPublic != null) {
+            Settings.setTokens(tempTokenPublicPrefKey, null, tempTokenSecretPrefKey, null);
+        }
     }
 
     @Override
     protected String getAuthTitle() {
-        return res.getString(siteResId);
-    }
-
-    @Override
-    protected String getAuthAgain() {
-        return res.getString(R.string.auth_again_oc);
-    }
-
-    @Override
-    protected String getErrAuthInitialize() {
-        return res.getString(R.string.err_auth_initialize);
-    }
-
-    @Override
-    protected String getAuthStart() {
-        return res.getString(R.string.auth_start_oc);
+        return res.getString(titleResId);
     }
 
     @Override
@@ -61,49 +64,15 @@ public class OCAuthorizationActivity extends OAuthAuthorizationActivity {
         return res.getString(R.string.auth_dialog_completed_oc, getAuthTitle());
     }
 
+    /**
+     * Return an extended error in case of an invalid time stamp
+     */
     @Override
-    protected String getErrAuthProcess() {
-        return res.getString(R.string.err_auth_process);
+    protected String getExtendedErrorMsg(final HttpResponse response) {
+        final OkapiError error = OkapiClient.decodeErrorResponse(response);
+        if (error.getResult() == OkapiErrors.INVALID_TIMESTAMP) {
+            return res.getString(R.string.init_login_popup_invalid_timestamp);
+        }
+        return StringUtils.EMPTY;
     }
-
-    @Override
-    protected String getAuthDialogWait() {
-        return res.getString(R.string.auth_dialog_wait_oc, getAuthTitle());
-    }
-
-    @Override
-    protected String getAuthDialogPinTitle() {
-        return res.getString(R.string.auth_dialog_pin_title_oc);
-    }
-
-    @Override
-    protected String getAuthDialogPinMessage() {
-        return res.getString(R.string.auth_dialog_pin_message_oc, getAuthTitle());
-    }
-
-    @Override
-    protected String getAboutAuth1() {
-        return res.getString(R.string.about_auth_1_oc, getAuthTitle());
-    }
-
-    @Override
-    protected String getAboutAuth2() {
-        return res.getString(R.string.about_auth_2_oc, getAuthTitle(), getAuthTitle());
-    }
-
-    @Override
-    protected String getAuthAuthorize() {
-        return res.getString(R.string.auth_authorize_oc);
-    }
-
-    @Override
-    protected String getAuthPinHint() {
-        return res.getString(R.string.auth_pin_hint_oc, getAuthTitle());
-    }
-
-    @Override
-    protected String getAuthFinish() {
-        return res.getString(R.string.auth_finish_oc);
-    }
-
 }

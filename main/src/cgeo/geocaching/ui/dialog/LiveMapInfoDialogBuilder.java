@@ -1,42 +1,41 @@
 package cgeo.geocaching.ui.dialog;
 
+import cgeo.geocaching.CgeoApplication;
 import cgeo.geocaching.R;
-import cgeo.geocaching.Settings;
-import cgeo.geocaching.cgeoapplication;
+import cgeo.geocaching.settings.Settings;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
+import android.os.Build.VERSION;
+import android.os.Build.VERSION_CODES;
 import android.view.ContextThemeWrapper;
 import android.view.View;
-import android.widget.CheckBox;
 
 public class LiveMapInfoDialogBuilder {
 
-    public static AlertDialog create(Activity activity) {
+    public static AlertDialog create(final Activity activity) {
         final AlertDialog.Builder builder = new AlertDialog.Builder(activity);
 
-        // AlertDialog has always dark style, so we have to apply it as well always
-        final View layout = View.inflate(new ContextThemeWrapper(activity, R.style.dark), R.layout.livemapinfo, null);
+        final Context themedContext;
+        if (Settings.isLightSkin() && VERSION.SDK_INT < VERSION_CODES.HONEYCOMB) {
+            themedContext = new ContextThemeWrapper(activity, R.style.dark);
+        } else {
+            themedContext = activity;
+        }
+        final View layout = View.inflate(themedContext, R.layout.livemapinfo, null);
         builder.setView(layout);
 
-        final CheckBox checkBoxHide = (CheckBox) layout.findViewById(R.id.live_map_hint_hide);
-
         final int showCount = Settings.getLiveMapHintShowCount();
-        if (showCount > 2) {
-            checkBoxHide.setVisibility(View.VISIBLE);
-        }
         Settings.setLiveMapHintShowCount(showCount + 1);
 
         builder.setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
 
             @Override
-            public void onClick(DialogInterface dialog, int which) {
+            public void onClick(final DialogInterface dialog, final int which) {
                 dialog.dismiss();
-                cgeoapplication.getInstance().setLiveMapHintShown();
-                if (checkBoxHide.getVisibility() == View.VISIBLE && checkBoxHide.isChecked()) {
-                    Settings.setHideLiveHint(true);
-                }
+                CgeoApplication.getInstance().setLiveMapHintShownInThisSession();
             }
         });
         return builder.create();

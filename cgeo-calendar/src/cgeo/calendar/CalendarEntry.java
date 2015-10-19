@@ -3,6 +3,7 @@ package cgeo.calendar;
 import cgeo.geocaching.utils.Log;
 
 import org.apache.commons.lang3.CharEncoding;
+import org.eclipse.jdt.annotation.NonNull;
 
 import android.net.Uri;
 import android.text.Html;
@@ -11,47 +12,54 @@ import android.text.style.ImageSpan;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
+import java.util.Calendar;
 import java.util.Date;
 
 class CalendarEntry {
 
-    private String shortDesc;
-    private String hiddenDate;
-    private String url;
-    private String personalNote;
-    private String name;
-    private String location;
-    private String coords;
+    @NonNull
+    private final String shortDesc;
+    @NonNull
+    private final String hiddenDate;
+    @NonNull
+    private final String url;
+    @NonNull
+    private final String personalNote;
+    @NonNull
+    private final String name;
+    @NonNull
+    private final String coords;
     private int startTimeMinutes = -1;
-    private Uri uri;
+    @NonNull
+    private final Uri uri;
 
-    public CalendarEntry(final Uri uri) {
+    public CalendarEntry(@NonNull final Uri uri) {
         this.uri = uri;
         this.shortDesc = getParameter(ICalendar.PARAM_SHORT_DESC);
         this.hiddenDate = getParameter(ICalendar.PARAM_HIDDEN_DATE);
         this.url = getParameter(ICalendar.PARAM_URL);
         this.personalNote = getParameter(ICalendar.PARAM_NOTE);
         this.name = getParameter(ICalendar.PARAM_NAME);
-        location = getParameter(ICalendar.PARAM_LOCATION);
         coords = getParameter(ICalendar.PARAM_COORDS);
         final String startTime = getParameter(ICalendar.PARAM_START_TIME_MINUTES);
         if (startTime.length() > 0) {
             try {
-                this.startTimeMinutes = Integer.valueOf(startTime);
-            } catch (NumberFormatException e) {
+                this.startTimeMinutes = Integer.parseInt(startTime);
+            } catch (final NumberFormatException e) {
                 Log.e("CalendarEntry creation", e);
             }
         }
     }
 
-    private String getParameter(final String paramKey) {
+    @NonNull
+    private String getParameter(@NonNull final String paramKey) {
         try {
             final String param = uri.getQueryParameter(paramKey);
             if (param == null) {
                 return "";
             }
             return URLDecoder.decode(param, CharEncoding.UTF_8).trim();
-        } catch (UnsupportedEncodingException e) {
+        } catch (final UnsupportedEncodingException e) {
             Log.e("CalendarEntry.getParameter", e);
         }
         return "";
@@ -61,66 +69,49 @@ class CalendarEntry {
         return getName().length() > 0 && getHiddenDate().length() > 0;
     }
 
+    @NonNull
     public String getHiddenDate() {
         return hiddenDate;
     }
 
+    @NonNull
     public String getUrl() {
         return url;
     }
 
+    @NonNull
     public String getPersonalNote() {
         return personalNote;
     }
 
+    @NonNull
     public String getShortDesc() {
         return shortDesc;
     }
 
     /**
-     * @return location string with coordinates and location
-     */
-    protected String parseLocation() {
-        final StringBuilder locBuffer = new StringBuilder();
-        if (coords.length() > 0) {
-            locBuffer.append(coords);
-        }
-        if (location.length() > 0) {
-            boolean addParentheses = false;
-            if (locBuffer.length() > 0) {
-                addParentheses = true;
-                locBuffer.append(" (");
-            }
-
-            locBuffer.append(Html.fromHtml(location).toString());
-            if (addParentheses) {
-                locBuffer.append(')');
-            }
-        }
-
-        return locBuffer.toString();
-    }
-
-    /**
      * @return <code>Date</code> based on hidden date. Time is set to 00:00:00.
      */
+    @NonNull
     protected Date parseDate() {
         try {
-            final Date eventDate = new Date(Long.parseLong(getHiddenDate()));
-            eventDate.setHours(0);
-            eventDate.setMinutes(0);
-            eventDate.setSeconds(0);
+            final Calendar cal = Calendar.getInstance();
+            cal.setTimeInMillis(Long.parseLong(getHiddenDate()));
+            cal.set(Calendar.HOUR_OF_DAY, 0);
+            cal.set(Calendar.MINUTE, 0);
+            cal.set(Calendar.SECOND, 0);
 
-            return eventDate;
-        } catch (NumberFormatException e) {
+            return cal.getTime();
+        } catch (final NumberFormatException e) {
             // cannot happen normally, but static code analysis does not know
+            throw new IllegalStateException("hidden date must be a valid date for cache calendar entries");
         }
-        return null;
     }
 
     /**
      * @return description string with images removed and personal note included
      */
+    @NonNull
     protected String parseDescription() {
         final StringBuilder description = new StringBuilder();
         description.append(getUrl());
@@ -145,12 +136,18 @@ class CalendarEntry {
         return description.toString();
     }
 
+    @NonNull
     public String getName() {
         return name;
     }
 
     public int getStartTimeMinutes() {
         return startTimeMinutes;
+    }
+
+    @NonNull
+    public String getCoords() {
+        return coords;
     }
 
 }

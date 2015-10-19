@@ -1,10 +1,13 @@
 package cgeo.geocaching.connector.capability;
 
 import cgeo.geocaching.SearchResult;
-import cgeo.geocaching.geopoint.Viewport;
+import cgeo.geocaching.connector.IConnector;
+import cgeo.geocaching.connector.gc.MapTokens;
+import cgeo.geocaching.location.Viewport;
 
-public interface ISearchByViewPort {
-    public SearchResult searchByViewport(final Viewport viewport, final String[] tokens);
+import org.eclipse.jdt.annotation.NonNull;
 
-    public boolean isActivated();
+public interface ISearchByViewPort extends IConnector {
+    @NonNull
+    public SearchResult searchByViewport(final @NonNull Viewport viewport, @NonNull final MapTokens tokens);
 }

@@ -1,8 +1,9 @@
 package cgeo.geocaching.test;
 
+import static org.assertj.core.api.Assertions.assertThat;
 
-import cgeo.geocaching.utils.BaseUtils;
 import cgeo.geocaching.utils.Log;
+import cgeo.geocaching.utils.TextUtils;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -29,8 +30,6 @@ public class WhitespaceTest extends AbstractResourceInstrumentationTestCase {
      * The place for the implementation to prove that the new version of replaceWhitespace is faster than
      * BaseUtils.replaceWhitespace()
      *
-     * @param data
-     * @return
      */
     public static String replaceWhitespaceManually(final String data) {
         final int length = data.length();
@@ -38,7 +37,7 @@ public class WhitespaceTest extends AbstractResourceInstrumentationTestCase {
         data.getChars(0, length, chars, 0);
         int resultSize = 0;
         boolean lastWasWhitespace = true;
-        for (char c : chars) {
+        for (final char c : chars) {
             if (c == ' ' || c == '\n' || c == '\r' || c == '\t') {
                 if (!lastWasWhitespace) {
                     chars[resultSize++] = ' ';
@@ -62,7 +61,7 @@ public class WhitespaceTest extends AbstractResourceInstrumentationTestCase {
         final Matcher matcher = pattern.matcher(data);
         final String result = matcher.replaceAll(" ").trim();
         final long end = System.currentTimeMillis();
-        assertEquals(EXPECTED_SIZE - 1, result.length());
+        assertThat(result.length()).isEqualTo(EXPECTED_SIZE - 1);
         Log.d((end - start) + " ms regex");
     }
 
@@ -70,16 +69,16 @@ public class WhitespaceTest extends AbstractResourceInstrumentationTestCase {
         final long start = System.currentTimeMillis();
         final String result = data.replaceAll("\\s+", " ");
         final long end = System.currentTimeMillis();
-        assertEquals(EXPECTED_SIZE + 1, result.length());
+        assertThat(result.length()).isEqualTo(EXPECTED_SIZE + 1);
         Log.d((end - start) + " ms replaceAll");
     }
 
     public void testActualImplementation() {
         final String result;
         final long start = System.currentTimeMillis();
-        result = BaseUtils.replaceWhitespace(data);
+        result = TextUtils.replaceWhitespace(data);
         final long end = System.currentTimeMillis();
-        assertEquals(EXPECTED_SIZE, result.length());
+        assertThat(result.length()).isEqualTo(EXPECTED_SIZE);
         Log.d((end - start) + " ms actual implementation");
     }
 
@@ -88,7 +87,7 @@ public class WhitespaceTest extends AbstractResourceInstrumentationTestCase {
         final long start = System.currentTimeMillis();
         result = replaceWhitespaceManually(data);
         final long end = System.currentTimeMillis();
-        assertEquals(EXPECTED_SIZE, result.length());
+        assertThat(result.length()).isEqualTo(EXPECTED_SIZE);
         Log.d((end - start) + " ms manually");
     }
 
@@ -97,7 +96,7 @@ public class WhitespaceTest extends AbstractResourceInstrumentationTestCase {
         final long start = System.currentTimeMillis();
         result = replaceWhitespaceStringUtils(data);
         final long end = System.currentTimeMillis();
-        assertEquals(EXPECTED_SIZE - 1, result.length());
+        assertThat(result.length()).isEqualTo(EXPECTED_SIZE - 1);
         Log.d((end - start) + " ms StringUtils");
     }
 }

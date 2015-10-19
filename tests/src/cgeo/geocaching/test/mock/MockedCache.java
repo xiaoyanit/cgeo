@@ -1,48 +1,52 @@
 package cgeo.geocaching.test.mock;
 
-import cgeo.geocaching.ICache;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cgeo.geocaching.Geocache;
 import cgeo.geocaching.Image;
 import cgeo.geocaching.Trackable;
 import cgeo.geocaching.connector.gc.GCConstants;
-import cgeo.geocaching.geopoint.Geopoint;
-import cgeo.geocaching.utils.BaseUtils;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.utils.TextUtils;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.NonNull;
 import org.mapsforge.core.IOUtils;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.Collections;
 import java.util.List;
 
 import junit.framework.Assert;
 
-public abstract class MockedCache implements ICache {
+public abstract class MockedCache extends Geocache {
 
     final protected Geopoint coords;
-    private String data;
+    private final String data;
     private String mockedDataUser;
 
     protected MockedCache(final Geopoint coords) {
         this.coords = coords;
         this.data = MockedCache.readCachePage(getGeocode());
         // for mocked caches the user logged in is the user who saved the html file(s)
-        this.mockedDataUser = BaseUtils.getMatch(data, GCConstants.PATTERN_LOGIN_NAME, true, "");
+        this.mockedDataUser = TextUtils.getMatch(data, GCConstants.PATTERN_LOGIN_NAME, true, "");
     }
 
     public String getMockedDataUser() {
-        Assert.assertTrue(StringUtils.isNotBlank(this.mockedDataUser));
+        assertThat(StringUtils.isNotBlank(this.mockedDataUser)).isTrue();
         return mockedDataUser;
     }
 
-    public void setMockedDataUser(String mockedDataUser) {
+    public void setMockedDataUser(final String mockedDataUser) {
         this.mockedDataUser = mockedDataUser;
-        Assert.assertTrue(StringUtils.isNotBlank(this.mockedDataUser));
+        assertThat(StringUtils.isNotBlank(this.mockedDataUser)).isTrue();
     }
 
     public static String getDateFormat() {
-        return "dd/MM/yyyy";
+        return "yyyy-MM-dd";
     }
 
     /*
@@ -68,8 +72,8 @@ public abstract class MockedCache implements ICache {
                 buffer.append(line).append('\n');
             }
 
-            return BaseUtils.replaceWhitespace(buffer.toString());
-        } catch (IOException e) {
+            return TextUtils.replaceWhitespace(buffer.toString());
+        } catch (final IOException e) {
             Assert.fail(e.getMessage());
         } finally {
             IOUtils.closeQuietly(is);
@@ -129,7 +133,7 @@ public abstract class MockedCache implements ICache {
     }
 
     @Override
-    public boolean isWatchlist() {
+    public boolean isOnWatchlist() {
         return false;
     }
 
@@ -139,8 +143,9 @@ public abstract class MockedCache implements ICache {
     }
 
     @Override
+    @NonNull
     public List<Image> getSpoilers() {
-        return null;
+        return Collections.emptyList();
     }
 
     @Override
@@ -148,6 +153,7 @@ public abstract class MockedCache implements ICache {
         return getName();
     }
 
+    @Override
     public Geopoint getCoords() {
         return coords;
     }

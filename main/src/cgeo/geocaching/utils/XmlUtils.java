@@ -4,7 +4,7 @@ import org.xmlpull.v1.XmlSerializer;
 
 import java.io.IOException;
 
-public class XmlUtils {
+public final class XmlUtils {
 
     private XmlUtils() {
         // Do not instantiate
@@ -16,13 +16,14 @@ public class XmlUtils {
      * @param serializer an XML serializer
      * @param prefix an XML prefix, see {@link XmlSerializer#startTag(String, String)}
      * @param tag an XML tag
-     * @param text some text to insert
-     * @throws IOException
+     * @param text some text to insert, or <tt>null</tt> to omit completely this tag
      */
     public static void simpleText(final XmlSerializer serializer, final String prefix, final String tag, final String text) throws IOException {
-        serializer.startTag(prefix, tag);
-        serializer.text(text);
-        serializer.endTag(prefix, tag);
+        if (text != null) {
+            serializer.startTag(prefix, tag);
+            serializer.text(text);
+            serializer.endTag(prefix, tag);
+        }
     }
 
     /**
@@ -30,8 +31,8 @@ public class XmlUtils {
      *
      * @param serializer an XML serializer
      * @param prefix an XML prefix, see {@link XmlSerializer#startTag(String, String)} shared by all tags
-     * @param tagAndText an XML tag, the corresponding text, another XML tag, the corresponding text, …
-     * @throws IOException
+     * @param tagAndText an XML tag, the corresponding text, another XML tag, the corresponding text. <tt>null</tt> texts
+     *                   will be omitted along with their respective tag.
      */
     public static void multipleTexts(final XmlSerializer serializer, final String prefix, final String... tagAndText) throws IOException {
         for (int i = 0; i < tagAndText.length; i += 2) {

@@ -1,8 +1,14 @@
 package cgeo.geocaching;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import cgeo.geocaching.enumerations.WaypointType;
 import cgeo.geocaching.files.LocalStorage;
-import cgeo.geocaching.geopoint.Geopoint;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.settings.Settings;
+import cgeo.geocaching.settings.TestSettings;
+import cgeo.geocaching.utils.FileUtils;
+import cgeo.geocaching.utils.RxUtils;
 
 import junit.framework.TestCase;
 
@@ -20,8 +26,8 @@ public class StaticMapsProviderTest extends TestCase {
 
         boolean backupStore = Settings.isStoreOfflineMaps();
         boolean backupStoreWP = Settings.isStoreOfflineWpMaps();
-        Settings.setStoreOfflineMaps(true);
-        Settings.setStoreOfflineWpMaps(true);
+        TestSettings.setStoreOfflineMaps(true);
+        TestSettings.setStoreOfflineWpMaps(true);
         try {
             Geopoint gp = new Geopoint(lat + 0.25d, lon + 0.25d);
             Geocache cache = new Geocache();
@@ -43,12 +49,12 @@ public class StaticMapsProviderTest extends TestCase {
 
             // make sure we don't have stale downloads
             deleteCacheDirectory(geocode);
-            assertFalse(StaticMapsProvider.hasStaticMap(cache));
-            assertFalse(StaticMapsProvider.hasStaticMapForWaypoint(geocode, theFinal));
-            assertFalse(StaticMapsProvider.hasStaticMapForWaypoint(geocode, trailhead));
+            assertThat(StaticMapsProvider.hasStaticMap(cache)).isFalse();
+            assertThat(StaticMapsProvider.hasStaticMapForWaypoint(geocode, theFinal)).isFalse();
+            assertThat(StaticMapsProvider.hasStaticMapForWaypoint(geocode, trailhead)).isFalse();
 
             // download
-            StaticMapsProvider.downloadMaps(cache);
+            RxUtils.waitForCompletion(StaticMapsProvider.downloadMaps(cache));
 
             try {
                 Thread.sleep(10000);
@@ -57,23 +63,23 @@ public class StaticMapsProviderTest extends TestCase {
             }
 
             // check download
-            assertTrue(StaticMapsProvider.hasStaticMap(cache));
-            assertTrue(StaticMapsProvider.hasStaticMapForWaypoint(geocode, theFinal));
-            assertTrue(StaticMapsProvider.hasStaticMapForWaypoint(geocode, trailhead));
+            assertThat(StaticMapsProvider.hasStaticMap(cache)).isTrue();
+            assertThat(StaticMapsProvider.hasStaticMapForWaypoint(geocode, theFinal)).isTrue();
+            assertThat(StaticMapsProvider.hasStaticMapForWaypoint(geocode, trailhead)).isTrue();
 
             // waypoint static maps hashcode dependent
             trailhead.setCoords(new Geopoint(lat + 0.24d + 2, lon + 0.25d + 2));
-            assertFalse(StaticMapsProvider.hasStaticMapForWaypoint(geocode, trailhead));
+            assertThat(StaticMapsProvider.hasStaticMapForWaypoint(geocode, trailhead)).isFalse();
         } finally {
-            Settings.setStoreOfflineWpMaps(backupStoreWP);
-            Settings.setStoreOfflineMaps(backupStore);
+            TestSettings.setStoreOfflineWpMaps(backupStoreWP);
+            TestSettings.setStoreOfflineMaps(backupStore);
             deleteCacheDirectory(geocode);
         }
     }
 
     private static void deleteCacheDirectory(String geocode) {
         File cacheDir = LocalStorage.getStorageDir(geocode);
-        LocalStorage.deleteDirectory(cacheDir);
+        FileUtils.deleteDirectory(cacheDir);
     }
 
 }

@@ -1,9 +1,9 @@
 package cgeo.geocaching;
 
-import cgeo.geocaching.cgData.StorageLocation;
+import cgeo.geocaching.DataStore.StorageLocation;
 import cgeo.geocaching.connector.gc.Tile;
 import cgeo.geocaching.enumerations.CacheType;
-import cgeo.geocaching.geopoint.Viewport;
+import cgeo.geocaching.location.Viewport;
 import cgeo.geocaching.utils.LeastRecentlyUsedMap;
 import cgeo.geocaching.utils.LeastRecentlyUsedMap.RemoveHandler;
 import cgeo.geocaching.utils.Log;
@@ -15,7 +15,7 @@ import java.util.Set;
 
 /**
  * Cache for Caches. Every cache is stored in memory while c:geo is active to
- * speed up the app and to minimize network request - which are slow.
+ * speed up the app and to minimize network requests - which are slow.
  */
 public class CacheCache {
 
@@ -23,7 +23,7 @@ public class CacheCache {
     final private LeastRecentlyUsedMap<String, Geocache> cachesCache;
 
     public CacheCache() {
-        cachesCache = new LeastRecentlyUsedMap.LruCache<String, Geocache>(MAX_CACHED_CACHES);
+        cachesCache = new LeastRecentlyUsedMap.LruCache<>(MAX_CACHED_CACHES);
         cachesCache.setRemoveHandler(new CacheRemoveHandler());
     }
 
@@ -79,7 +79,7 @@ public class CacheCache {
     }
 
     public synchronized Set<String> getInViewport(final Viewport viewport, final CacheType cacheType) {
-        final Set<String> geocodes = new HashSet<String>();
+        final Set<String> geocodes = new HashSet<>();
         for (final Geocache cache : cachesCache.values()) {
             if (cache.getCoords() == null) {
                 // FIXME: this kludge must be removed, it is only present to help us debug the cases where
@@ -106,7 +106,7 @@ public class CacheCache {
             // FIXME: as above, we sometimes get caches with null coordinates, that may then provoke
             // a NullPointerException down the invocation chain.
             if (removed.getCoords() != null) {
-                Tile.Cache.removeFromTileCache(removed);
+                Tile.cache.removeFromTileCache(removed);
             }
         }
     }

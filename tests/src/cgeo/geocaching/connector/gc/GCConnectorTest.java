@@ -1,12 +1,19 @@
 package cgeo.geocaching.connector.gc;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import cgeo.geocaching.SearchResult;
-import cgeo.geocaching.Settings;
 import cgeo.geocaching.connector.ConnectorFactory;
+import cgeo.geocaching.connector.ConnectorFactoryTest;
+import cgeo.geocaching.connector.trackable.TravelBugConnector;
 import cgeo.geocaching.enumerations.CacheType;
-import cgeo.geocaching.geopoint.Geopoint;
-import cgeo.geocaching.geopoint.Viewport;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.location.Viewport;
+import cgeo.geocaching.settings.Settings;
+import cgeo.geocaching.settings.TestSettings;
 import cgeo.geocaching.test.AbstractResourceInstrumentationTestCase;
+
+import java.util.Set;
 
 public class GCConnectorTest extends AbstractResourceInstrumentationTestCase {
 
@@ -16,42 +23,49 @@ public class GCConnectorTest extends AbstractResourceInstrumentationTestCase {
         final CacheType cacheType = Settings.getCacheType();
         try {
             // set up settings required for test
-            Settings.setExcludeMine(false);
+            TestSettings.setExcludeMine(false);
             Settings.setCacheType(CacheType.ALL);
-            Login.login();
+            GCLogin.getInstance().login();
 
-            final String[] tokens = Login.getMapTokens();
+            final MapTokens tokens = GCLogin.getInstance().getMapTokens();
 
             {
                 final Viewport viewport = new Viewport(new Geopoint("N 52° 25.369 E 9° 35.499"), new Geopoint("N 52° 25.600 E 9° 36.200"));
                 final SearchResult searchResult = ConnectorFactory.searchByViewport(viewport, tokens);
-                assertNotNull(searchResult);
-                assertFalse(searchResult.isEmpty());
-                assertTrue(searchResult.getGeocodes().contains("GC211WG"));
-                // Spiel & Sport GC211WG N 52° 25.413 E 009° 36.049
+                assertThat(searchResult).isNotNull();
+                assertThat(searchResult.isEmpty()).isFalse();
+                assertThat(searchResult.getGeocodes()).contains("GC4ER5H");
+                // 22.10.13: Changed from GC211WG (archived) to GC4ER5H  in same area
             }
 
             {
                 final Viewport viewport = new Viewport(new Geopoint("N 52° 24.000 E 9° 34.500"), new Geopoint("N 52° 26.000 E 9° 38.500"));
                 final SearchResult searchResult = ConnectorFactory.searchByViewport(viewport, tokens);
-                assertNotNull(searchResult);
-                assertTrue(searchResult.getGeocodes().contains("GC211WG"));
+                assertThat(searchResult).isNotNull();
+                assertThat(searchResult.getGeocodes()).contains("GC4ER5H");
             }
         } finally {
             // restore user settings
-            Settings.setExcludeMine(excludeMine);
+            TestSettings.setExcludeMine(excludeMine);
             Settings.setCacheType(cacheType);
         }
     }
 
     public static void testCanHandle() {
-        assertTrue(GCConnector.getInstance().canHandle("GC2MEGA"));
-        assertTrue(GCConnector.getInstance().canHandle("TB3F651"));
-        assertFalse(GCConnector.getInstance().canHandle("OXZZZZZ"));
+        assertThat(GCConnector.getInstance().canHandle("GC2MEGA")).isTrue();
+        assertThat(GCConnector.getInstance().canHandle("OXZZZZZ")).isFalse();
+        assertThat(GCConnector.getInstance().canHandle("gc77")).isTrue();
+    }
+
+    /**
+     * functionality moved to {@link TravelBugConnector}
+     */
+    public static void testCanNotHandleTrackablesAnymore() {
+        assertThat(GCConnector.getInstance().canHandle("TB3F651")).isFalse();
     }
 
     public static void testBaseCodings() {
-        assertEquals(2045702, GCConstants.gccodeToGCId("GC2MEGA"));
+        assertThat(GCConstants.gccodeToGCId("GC2MEGA")).isEqualTo(2045702);
     }
 
     /** Tile computation with different zoom levels */
@@ -72,14 +86,28 @@ public class GCConnectorTest extends AbstractResourceInstrumentationTestCase {
         assertTileAt(7536, 4915, new Tile(new Geopoint("S 33° 50.326 E 151° 12.426"), 13));
     }
 
-    private static void assertTileAt(int x, int y, final Tile tile) {
-        assertEquals(x, tile.getX());
-        assertEquals(y, tile.getY());
+    private static void assertTileAt(final int x, final int y, final Tile tile) {
+        assertThat(tile.getX()).isEqualTo(x);
+        assertThat(tile.getY()).isEqualTo(y);
     }
 
     public static void testGetGeocodeFromUrl() {
-        assertNull(GCConnector.getInstance().getGeocodeFromUrl("some string"));
-        assertEquals("GC12ABC", GCConnector.getInstance().getGeocodeFromUrl("http://coord.info/GC12ABC"));
+        assertThat(GCConnector.getInstance().getGeocodeFromUrl("some string")).isNull();
+        assertThat(GCConnector.getInstance().getGeocodeFromUrl("http://coord.info/GC12ABC")).isEqualTo("GC12ABC");
+        assertThat(GCConnector.getInstance().getGeocodeFromUrl("http://www.coord.info/GC12ABC")).isEqualTo("GC12ABC");
+        assertThat(GCConnector.getInstance().getGeocodeFromUrl("http://www.geocaching.com/geocache/GC12ABC_die-muhlen-im-schondratal-muhle-munchau")).isEqualTo("GC12ABC");
+        assertThat(GCConnector.getInstance().getGeocodeFromUrl("http://geocaching.com/geocache/GC12ABC_die-muhlen-im-schondratal-muhle-munchau")).isEqualTo("GC12ABC");
+
+        assertThat(GCConnector.getInstance().getGeocodeFromUrl("http://coord.info/TB1234")).isNull();
+        assertThat(GCConnector.getInstance().getGeocodeFromUrl("http://www.coord.info/TB1234")).isNull();
+        assertThat(GCConnector.getInstance().getGeocodeFromUrl("http://www.coord.info/WM1234")).isNull();
+
+        // uppercase is managed in ConnectorFactory
+        assertThat(GCConnector.getInstance().getGeocodeFromUrl("http://coord.info/gc77")).isEqualTo("gc77");
+    }
+
+    public static void testHandledGeocodes() {
+        Set<String> geocodes = ConnectorFactoryTest.getGeocodeSample();
+        assertThat(GCConnector.getInstance().handledGeocodes(geocodes)).containsOnly("GC1234", "GC5678");
     }
 }
-

@@ -1,31 +1,34 @@
 package cgeo.geocaching.enumerations;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import org.apache.commons.lang3.StringUtils;
+
 import android.test.AndroidTestCase;
 
 public class CacheAttributeTest extends AndroidTestCase {
 
     public static void testTrimAttributeName() {
-        for (CacheAttribute attribute : CacheAttribute.values()) {
+        for (final CacheAttribute attribute : CacheAttribute.values()) {
             final String rawName = attribute.rawName;
-            assertTrue("bad attribute name " + rawName, CacheAttribute.trimAttributeName(rawName).equals(rawName));
+            assertThat(CacheAttribute.trimAttributeName(rawName)).as("attribute name").isEqualTo(rawName);
         }
     }
 
     public static void testIds() {
-        for (CacheAttribute attribute : CacheAttribute.values()) {
+        for (final CacheAttribute attribute : CacheAttribute.values()) {
             if (attribute != CacheAttribute.UNKNOWN) {
-                assertTrue(attribute.rawName != null);
-                assertTrue(attribute.rawName.length() > 0);
-                assertTrue(attribute.drawableId != 0);
-                assertTrue(attribute.stringIdYes != 0);
-                assertTrue(attribute.stringIdNo != 0);
+                assertThat(StringUtils.isNotEmpty(attribute.rawName)).isTrue();
+                assertThat(attribute.drawableId).isNotEqualTo(0);
+                assertThat(attribute.stringIdYes).isNotEqualTo(0);
+                assertThat(attribute.stringIdNo).isNotEqualTo(0);
             }
         }
     }
 
     public static void testGetL10n() {
         final CacheAttribute attribute = CacheAttribute.HIKING;
-        // This test is language dependend. It does not make sense to test it
+        // This test is language dependent. It does not make sense to test it
         // with every attribute. We just want to know if getL10n works
         // correctly
         assertFalse("_yes and _no must not have the same translation",
@@ -34,19 +37,17 @@ public class CacheAttributeTest extends AndroidTestCase {
 
     public static void testGetBy() {
         final CacheAttribute attribute = CacheAttribute.HIKING; // an attribute that is present in GC and OC
-        assertTrue("Test cannot be run with this attribute", attribute.gcid >= 0);
-        assertTrue("Test cannot be run with this attribute", attribute.ocid >= 0);
-        assertSame(CacheAttribute.getByRawName(attribute.rawName), attribute);
-        assertSame(CacheAttribute.getByGcId(attribute.gcid), attribute);
-        assertSame(CacheAttribute.getByOcId(attribute.ocid), attribute);
+        assertThat(attribute.gcid).overridingErrorMessage("Test cannot be run with this attribute").isGreaterThanOrEqualTo(0);
+        assertThat(attribute.ocacode).overridingErrorMessage("Test cannot be run with this attribute").isGreaterThanOrEqualTo(0);
+        assertThat(attribute).isSameAs(CacheAttribute.getByRawName(attribute.rawName));
+        assertThat(attribute).isSameAs(CacheAttribute.getByOcACode(attribute.ocacode));
     }
 
     public static void testIsEnabled() {
-        final CacheAttribute attribute = CacheAttribute.HIKING;
-        final String hiking_yes = attribute.getAttributeName(true);
-        final String hiking_no = attribute.getAttributeName(false);
-        assertTrue(CacheAttribute.isEnabled(hiking_yes));
-        assertFalse(CacheAttribute.isEnabled(hiking_no));
+        final String hiking_yes = "hiking_yes";
+        final String hiking_no = "hiking_no";
+        assertThat(CacheAttribute.isEnabled(hiking_yes)).isTrue();
+        assertThat(CacheAttribute.isEnabled(hiking_no)).isFalse();
     }
 
 }

@@ -1,247 +1,63 @@
 package cgeo.geocaching;
 
-import cgeo.geocaching.activity.Progress;
-import cgeo.geocaching.apps.cache.navi.NavigationAppFactory;
-import cgeo.geocaching.geopoint.Geopoint;
-import cgeo.geocaching.network.Network;
-import cgeo.geocaching.ui.CacheDetailsCreator;
-import cgeo.geocaching.utils.CancellableHandler;
-import cgeo.geocaching.utils.Log;
-import cgeo.geocaching.utils.RunnableWithArgument;
+import cgeo.geocaching.activity.AbstractActivity;
+import cgeo.geocaching.activity.ActivityMixin;
 
 import org.apache.commons.lang3.StringUtils;
 
 import android.content.Context;
 import android.content.Intent;
-import android.content.res.Configuration;
-import android.os.Handler;
-import android.os.Message;
-import android.view.View;
-import android.widget.LinearLayout;
-import android.widget.TextView;
+import android.os.Bundle;
+import android.support.v4.app.DialogFragment;
+import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentTransaction;
+import android.view.Window;
 
-public class CachePopup extends AbstractPopupActivity {
-    private final Progress progress = new Progress();
+public class CachePopup extends AbstractActivity {
 
-    private class StoreCacheHandler extends CancellableHandler {
-        @Override
-        public void handleRegularMessage(Message msg) {
-            if (UPDATE_LOAD_PROGRESS_DETAIL == msg.what && msg.obj instanceof String) {
-                updateStatusMsg((String) msg.obj);
-            } else {
-                init();
-            }
+    protected String geocode = null;
+
+
+    void showDialog() {
+        // DialogFragment.show() will take care of adding the fragment
+        // in a transaction.  We also want to remove any currently showing
+        // dialog, so make our own transaction and take care of that here.
+        final FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
+        final Fragment prev = getSupportFragmentManager().findFragmentByTag("dialog");
+        if (prev != null) {
+            ft.remove(prev);
         }
+        ft.addToBackStack(null);
 
-        private void updateStatusMsg(final String msg) {
-            progress.setMessage(res.getString(R.string.cache_dialog_offline_save_message)
-                    + "\n\n"
-                    + msg);
-        }
-    }
-
-    private class DropCacheHandler extends Handler {
-        @Override
-        public void handleMessage(Message msg) {
-            init();
-        }
-    }
-
-    private class RefreshCacheHandler extends CancellableHandler {
-        @Override
-        public void handleRegularMessage(Message msg) {
-            if (UPDATE_LOAD_PROGRESS_DETAIL == msg.what && msg.obj instanceof String) {
-                updateStatusMsg((String) msg.obj);
-            } else {
-                init();
-            }
-        }
-
-        private void updateStatusMsg(final String msg) {
-            progress.setMessage(res.getString(R.string.cache_dialog_refresh_message)
-                    + "\n\n"
-                    + msg);
-        }
-    }
-
-    public CachePopup() {
-        super(R.layout.popup);
+        // Create and show the dialog.
+        final DialogFragment newFragment = CachePopupFragment.newInstance(geocode);
+        newFragment.show(ft, "dialog");
     }
 
     @Override
-    protected void showNavigationMenu() {
-        NavigationAppFactory.showNavigationMenu(this, cache, null, null);
-    }
+    public void onCreate(final Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        supportRequestWindowFeature(Window.FEATURE_NO_TITLE);
+        this.setTheme(ActivityMixin.getDialogTheme());
 
-    @Override
-    protected void init() {
-        super.init();
-        try {
-            if (StringUtils.isNotBlank(cache.getName())) {
-                setTitle(cache.getName());
-            } else {
-                setTitle(geocode);
-            }
 
-            // actionbar icon
-            ((TextView) findViewById(R.id.actionbar_title)).setCompoundDrawablesWithIntrinsicBounds(getResources().getDrawable(cache.getType().markerId), null, null, null);
-
-            details = new CacheDetailsCreator(this, (LinearLayout) findViewById(R.id.details_list));
-
-            addCacheDetails();
-
-            // offline use
-            CacheDetailActivity.updateOfflineBox(findViewById(android.R.id.content), cache, res, new RefreshCacheClickListener(), new DropCacheClickListener(), new StoreCacheClickListener());
-
-        } catch (Exception e) {
-            Log.e("cgeopopup.init", e);
+        final Bundle extras = getIntent().getExtras();
+        if (extras != null) {
+            geocode = extras.getString(Intents.EXTRA_GEOCODE);
         }
 
-        // cache is loaded. remove progress-popup if any there
-        progress.dismiss();
-    }
+        if (StringUtils.isBlank(geocode)) {
+            showToast(res.getString(R.string.err_detail_cache_find));
 
-    @Override
-    public void onConfigurationChanged(Configuration newConfig) {
-        super.onConfigurationChanged(newConfig);
-
-        init();
-    }
-
-    private class StoreCacheClickListener implements View.OnClickListener {
-        @Override
-        public void onClick(View arg0) {
-            if (progress.isShowing()) {
-                showToast(res.getString(R.string.err_detail_still_working));
-                return;
-            }
-
-            if (Settings.getChooseList()) {
-                // let user select list to store cache in
-                new StoredList.UserInterface(CachePopup.this).promptForListSelection(R.string.list_title,
-                        new RunnableWithArgument<Integer>() {
-                            @Override
-                            public void run(final Integer selectedListId) {
-                                storeCache(selectedListId);
-                            }
-                        }, true, StoredList.TEMPORARY_LIST_ID);
-            } else {
-                storeCache(StoredList.TEMPORARY_LIST_ID);
-            }
-        }
-
-        protected void storeCache(final int listId) {
-            final StoreCacheHandler storeCacheHandler = new StoreCacheHandler();
-            progress.show(CachePopup.this, res.getString(R.string.cache_dialog_offline_save_title), res.getString(R.string.cache_dialog_offline_save_message), true, storeCacheHandler.cancelMessage());
-            new StoreCacheThread(listId, storeCacheHandler).start();
-        }
-    }
-
-    private class StoreCacheThread extends Thread {
-        final private int listId;
-        final private CancellableHandler handler;
-
-        public StoreCacheThread(final int listId, final CancellableHandler handler) {
-            this.listId = listId;
-            this.handler = handler;
-        }
-
-        @Override
-        public void run() {
-            cache.store(listId, handler);
-            invalidateOptionsMenuCompatible();
-        }
-    }
-
-    private class RefreshCacheClickListener implements View.OnClickListener {
-        @Override
-        public void onClick(View arg0) {
-            if (progress.isShowing()) {
-                showToast(res.getString(R.string.err_detail_still_working));
-                return;
-            }
-
-            if (!Network.isNetworkConnected(getApplicationContext())) {
-                showToast(getString(R.string.err_server));
-                return;
-            }
-
-            final RefreshCacheHandler refreshCacheHandler = new RefreshCacheHandler();
-            progress.show(CachePopup.this, res.getString(R.string.cache_dialog_refresh_title), res.getString(R.string.cache_dialog_refresh_message), true, refreshCacheHandler.cancelMessage());
-            new RefreshCacheThread(refreshCacheHandler).start();
-        }
-    }
-
-    private class RefreshCacheThread extends Thread {
-        final private CancellableHandler handler;
-
-        public RefreshCacheThread(final CancellableHandler handler) {
-            this.handler = handler;
-        }
-
-        @Override
-        public void run() {
-            cache.refresh(cache.getListId(), handler);
-            handler.sendEmptyMessage(0);
-        }
-    }
-
-    private class DropCacheClickListener implements View.OnClickListener {
-        @Override
-        public void onClick(View arg0) {
-            if (progress.isShowing()) {
-                showToast(res.getString(R.string.err_detail_still_working));
-                return;
-            }
-
-            final DropCacheHandler dropCacheHandler = new DropCacheHandler();
-            progress.show(CachePopup.this, res.getString(R.string.cache_dialog_offline_drop_title), res.getString(R.string.cache_dialog_offline_drop_message), true, null);
-            new DropCacheThread(dropCacheHandler).start();
-        }
-    }
-
-    private class DropCacheThread extends Thread {
-        final private Handler handler;
-
-        public DropCacheThread(Handler handlerIn) {
-            handler = handlerIn;
-        }
-
-        @Override
-        public void run() {
-            cache.drop(handler);
-        }
-    }
-
-    @Override
-    protected void navigateTo() {
-        NavigationAppFactory.startDefaultNavigationApplication(1, this, cache);
-    }
-
-    /**
-     * Tries to navigate to the {@link Geocache} of this activity.
-     */
-    @Override
-    protected void startDefaultNavigation2() {
-        if (cache == null || cache.getCoords() == null) {
-            showToast(res.getString(R.string.cache_coordinates_no));
+            finish();
             return;
         }
-        NavigationAppFactory.startDefaultNavigationApplication(2, this, cache);
-        finish();
+        showDialog();
     }
 
     public static void startActivity(final Context context, final String geocode) {
         final Intent popupIntent = new Intent(context, CachePopup.class);
         popupIntent.putExtra(Intents.EXTRA_GEOCODE, geocode);
         context.startActivity(popupIntent);
-    }
-
-    @Override
-    protected Geopoint getCoordinates() {
-        if (cache == null) {
-            return null;
-        }
-        return cache.getCoords();
     }
 }

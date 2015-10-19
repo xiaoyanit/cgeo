@@ -1,8 +1,8 @@
 package cgeo.geocaching.connector.gc;
 
 import cgeo.geocaching.Geocache;
-import cgeo.geocaching.Settings;
 import cgeo.geocaching.enumerations.CacheType;
+import cgeo.geocaching.settings.Settings;
 
 import android.graphics.Bitmap;
 
@@ -10,7 +10,7 @@ import android.graphics.Bitmap;
  * icon decoder for cache icons
  *
  */
-public abstract class IconDecoder {
+final class IconDecoder {
     private static final int CT_TRADITIONAL = 0;
     private static final int CT_MULTI = 1;
     private static final int CT_MYSTERY = 2;
@@ -21,11 +21,15 @@ public abstract class IconDecoder {
     private static final int CT_MEGAEVENT = 7;
     private static final int CT_CITO = 8;
     private static final int CT_WEBCAM = 9;
-    private static final int CT_WHEREIGO = 10;
+    private static final int CT_WHERIGO = 10;
     private static final int CT_VIRTUAL = 11;
     private static final int CT_LETTERBOX = 12;
 
-    public static boolean parseMapPNG(final Geocache cache, Bitmap bitmap, UTFGridPosition xy, int zoomlevel) {
+    private IconDecoder() {
+        throw new IllegalStateException("utility class");
+    }
+
+    static boolean parseMapPNG(final Geocache cache, final Bitmap bitmap, final UTFGridPosition xy, final int zoomlevel) {
         final int topX = xy.getX() * 4;
         final int topY = xy.getY() * 4;
         final int bitmapWidth = bitmap.getWidth();
@@ -35,7 +39,7 @@ public abstract class IconDecoder {
             return false; //out of image position
         }
 
-        int numberOfDetections = 7; //for level 12 and 13;
+        int numberOfDetections = 7; //for level 12 and 13
         if (zoomlevel < 12) {
             numberOfDetections = 5;
         }
@@ -43,24 +47,24 @@ public abstract class IconDecoder {
             numberOfDetections = 13;
         }
 
-        int[] pngType = new int[numberOfDetections];
+        final int[] pngType = new int[numberOfDetections];
         for (int x = topX; x < topX + 4; x++) {
             for (int y = topY; y < topY + 4; y++) {
-                int color = bitmap.getPixel(x, y);
+                final int color = bitmap.getPixel(x, y);
 
                 if ((color >>> 24) != 255) {
                     continue; //transparent pixels (or semi_transparent) are only shadows of border
                 }
 
-                int r = (color & 0xFF0000) >> 16;
-                int g = (color & 0xFF00) >> 8;
-                int b = color & 0xFF;
+                final int r = (color & 0xFF0000) >> 16;
+                final int g = (color & 0xFF00) >> 8;
+                final int b = color & 0xFF;
 
                 if (isPixelDuplicated(r, g, b, zoomlevel)) {
                     continue;
                 }
 
-                int type;
+                final int type;
                 if (zoomlevel < 12) {
                     type = getCacheTypeFromPixel11(r, g, b);
                 } else {
@@ -87,19 +91,19 @@ public abstract class IconDecoder {
         if (count > 1) { // 2 pixels need to detect same type and we say good to go
             switch (type) {
                 case CT_TRADITIONAL:
-                    cache.setType(CacheType.TRADITIONAL);
+                    cache.setType(CacheType.TRADITIONAL, zoomlevel);
                     return true;
                 case CT_MULTI:
-                    cache.setType(CacheType.MULTI);
+                    cache.setType(CacheType.MULTI, zoomlevel);
                     return true;
                 case CT_MYSTERY:
-                    cache.setType(CacheType.MYSTERY);
+                    cache.setType(CacheType.MYSTERY, zoomlevel);
                     return true;
                 case CT_EVENT:
-                    cache.setType(CacheType.EVENT);
+                    cache.setType(CacheType.EVENT, zoomlevel);
                     return true;
                 case CT_EARTH:
-                    cache.setType(CacheType.EARTH);
+                    cache.setType(CacheType.EARTH, zoomlevel);
                     return true;
                 case CT_FOUND:
                     cache.setFound(true);
@@ -108,22 +112,22 @@ public abstract class IconDecoder {
                     cache.setOwnerUserId(Settings.getUsername());
                     return true;
                 case CT_MEGAEVENT:
-                    cache.setType(CacheType.MEGA_EVENT);
+                    cache.setType(CacheType.MEGA_EVENT, zoomlevel);
                     return true;
                 case CT_CITO:
-                    cache.setType(CacheType.CITO);
+                    cache.setType(CacheType.CITO, zoomlevel);
                     return true;
                 case CT_WEBCAM:
-                    cache.setType(CacheType.WEBCAM);
+                    cache.setType(CacheType.WEBCAM, zoomlevel);
                     return true;
-                case CT_WHEREIGO:
-                    cache.setType(CacheType.WHERIGO);
+                case CT_WHERIGO:
+                    cache.setType(CacheType.WHERIGO, zoomlevel);
                     return true;
                 case CT_VIRTUAL:
-                    cache.setType(CacheType.VIRTUAL);
+                    cache.setType(CacheType.VIRTUAL, zoomlevel);
                     return true;
                 case CT_LETTERBOX:
-                    cache.setType(CacheType.LETTERBOX);
+                    cache.setType(CacheType.LETTERBOX, zoomlevel);
                     return true;
             }
         }
@@ -143,7 +147,7 @@ public abstract class IconDecoder {
      *            zoom level of map
      * @return true if parsing should not be performed
      */
-    private static boolean isPixelDuplicated(int r, int g, int b, int zoomlevel) {
+    private static boolean isPixelDuplicated(final int r, final int g, final int b, final int zoomlevel) {
         if (zoomlevel < 12) {
             if (((r == g) && (g == b)) || ((r == 233) && (g == 233) && (b == 234))) {
                 return true;
@@ -194,7 +198,7 @@ public abstract class IconDecoder {
      *            Blue component of pixel (from 0 - 255)
      * @return Value from 0 to 6 representing detected type or state of the cache.
      */
-    private static int getCacheTypeFromPixel13(int r, int g, int b) {
+    private static int getCacheTypeFromPixel13(final int r, final int g, final int b) {
         if (b < 130) {
             if (r < 41) {
                 return CT_MYSTERY;
@@ -256,7 +260,7 @@ public abstract class IconDecoder {
      *            Blue component of pixel (from 0 - 255)
      * @return Value from 0 to 6 representing detected type or state of the cache.
      */
-    private static int getCacheTypeFromPixel14(int r, int g, int b) {
+    private static int getCacheTypeFromPixel14(final int r, final int g, final int b) {
         if (b < 128) {
             if (r < 214) {
                 if (b < 37) {
@@ -395,12 +399,12 @@ public abstract class IconDecoder {
                     if (g < 71) {
                         return CT_MYSTERY;
                     }
-                    return r < 153 ? CT_WHEREIGO : CT_WEBCAM;
+                    return r < 153 ? CT_WHERIGO : CT_WEBCAM;
                 }
                 if (b < 167) {
                     return r < 157 ? CT_TRADITIONAL : CT_WEBCAM;
                 }
-                return CT_WHEREIGO;
+                return CT_WHERIGO;
             }
             if (g < 199) {
                 if (r < 142) {
@@ -450,7 +454,7 @@ public abstract class IconDecoder {
             if (b < 252) {
                 if (r < 243) {
                     if (r < 225) {
-                        return CT_WHEREIGO;
+                        return CT_WHERIGO;
                     }
                     if (b < 232) {
                         if (g < 228) {
@@ -459,14 +463,14 @@ public abstract class IconDecoder {
                         return r < 231 ? CT_VIRTUAL : CT_TRADITIONAL;
                     }
                     if (r < 236) {
-                        return CT_WHEREIGO;
+                        return CT_WHERIGO;
                     }
-                    return r < 240 ? CT_WEBCAM : CT_WHEREIGO;
+                    return r < 240 ? CT_WEBCAM : CT_WHERIGO;
                 }
                 if (g < 247) {
                     return r < 245 ? CT_WEBCAM : CT_FOUND;
                 }
-                return CT_WHEREIGO;
+                return CT_WHERIGO;
             }
             return CT_LETTERBOX;
         }
@@ -489,7 +493,7 @@ public abstract class IconDecoder {
      *            Blue component of pixel (from 0 - 255)
      * @return Value from 0 to 4 representing detected type or state of the cache.
      */
-    private static int getCacheTypeFromPixel11(int r, int g, int b) {
+    private static int getCacheTypeFromPixel11(final int r, final int g, final int b) {
         if (g < 136) {
             if (r < 90) {
                 return g < 111 ? CT_MYSTERY : CT_TRADITIONAL;

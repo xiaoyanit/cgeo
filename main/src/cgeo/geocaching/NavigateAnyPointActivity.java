@@ -1,24 +1,31 @@
 package cgeo.geocaching;
 
-import butterknife.InjectView;
-import butterknife.Views;
-
-import cgeo.geocaching.activity.AbstractActivity;
-import cgeo.geocaching.apps.cache.navi.NavigationAppFactory;
-import cgeo.geocaching.geopoint.DistanceParser;
-import cgeo.geocaching.geopoint.Geopoint;
-import cgeo.geocaching.geopoint.GeopointFormatter;
-import cgeo.geocaching.ui.Formatter;
+import cgeo.geocaching.activity.AbstractActionBarActivity;
+import cgeo.geocaching.activity.INavigationSource;
+import cgeo.geocaching.apps.navi.NavigationAppFactory;
+import cgeo.geocaching.location.DistanceParser;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.location.GeopointFormatter;
+import cgeo.geocaching.sensors.GeoData;
+import cgeo.geocaching.sensors.GeoDirHandler;
+import cgeo.geocaching.sensors.Sensors;
+import cgeo.geocaching.settings.Settings;
+import cgeo.geocaching.ui.AbstractViewHolder;
+import cgeo.geocaching.ui.NavigationActionProvider;
 import cgeo.geocaching.ui.dialog.CoordinatesInputDialog;
-import cgeo.geocaching.utils.GeoDirHandler;
+import cgeo.geocaching.ui.dialog.Dialogs;
+import cgeo.geocaching.utils.Formatter;
 import cgeo.geocaching.utils.Log;
+import cgeo.geocaching.utils.RxUtils;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.Nullable;
 
 import android.app.Activity;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.os.Bundle;
+import android.support.v4.view.MenuItemCompat;
 import android.view.ContextMenu;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.LayoutInflater;
@@ -39,15 +46,22 @@ import android.widget.TextView;
 
 import java.util.List;
 
-public class NavigateAnyPointActivity extends AbstractActivity {
+import butterknife.Bind;
+import butterknife.ButterKnife;
+import rx.functions.Action0;
+import rx.schedulers.Schedulers;
 
-    @InjectView(R.id.buttonLatitude) protected Button latButton;
-    @InjectView(R.id.buttonLongitude) protected Button lonButton;
-    @InjectView(R.id.current) protected Button buttonCurrent;
-    @InjectView(R.id.historyList) protected ListView historyListView;
-    @InjectView(R.id.distanceUnit) protected Spinner distanceUnitSelector;
-    @InjectView(R.id.bearing) protected EditText bearingEditText;
-    @InjectView(R.id.distance) protected EditText distanceEditText;
+public class NavigateAnyPointActivity extends AbstractActionBarActivity implements CoordinatesInputDialog.CoordinateUpdate, INavigationSource {
+
+    @Bind(R.id.historyList) protected ListView historyListView;
+
+    // list header fields are optional, due to being expanded later than the list itself
+    @Nullable @Bind(R.id.buttonLatitude) protected Button latButton;
+    @Nullable @Bind(R.id.buttonLongitude) protected Button lonButton;
+    @Nullable @Bind(R.id.distance) protected EditText distanceEditText;
+    @Nullable @Bind(R.id.distanceUnit) protected Spinner distanceUnitSelector;
+    @Nullable @Bind(R.id.current) protected Button buttonCurrent;
+    @Nullable @Bind(R.id.bearing) protected EditText bearingEditText;
 
     private boolean changed = false;
     private List<Destination> historyOfSearchedLocations;
@@ -60,24 +74,23 @@ public class NavigateAnyPointActivity extends AbstractActivity {
 
     private int contextMenuItemPosition;
 
-    private String distanceUnit = "";
+    private String distanceUnit = StringUtils.EMPTY;
 
-    protected static class ViewHolder {
-        @InjectView(R.id.simple_way_point_longitude) protected TextView longitude;
-        @InjectView(R.id.simple_way_point_latitude) protected TextView latitude;
-        @InjectView(R.id.date) protected TextView date;
+    protected static class ViewHolder extends AbstractViewHolder {
+        @Bind(R.id.simple_way_point_longitude) protected TextView longitude;
+        @Bind(R.id.simple_way_point_latitude) protected TextView latitude;
+        @Bind(R.id.date) protected TextView date;
 
-        public ViewHolder(View rowView) {
-            Views.inject(this, rowView);
-            rowView.setTag(this);
+        public ViewHolder(final View rowView) {
+            super(rowView);
         }
     }
 
     private static class DestinationHistoryAdapter extends ArrayAdapter<Destination> {
         private LayoutInflater inflater = null;
 
-        public DestinationHistoryAdapter(Context context,
-                List<Destination> objects) {
+        public DestinationHistoryAdapter(final Context context,
+                final List<Destination> objects) {
             super(context, 0, objects);
         }
 
@@ -85,9 +98,9 @@ public class NavigateAnyPointActivity extends AbstractActivity {
         public View getView(final int position, final View convertView, final ViewGroup parent) {
             View rowView = convertView;
 
-            ViewHolder viewHolder;
+            final ViewHolder viewHolder;
             if (rowView == null) {
-                rowView = getInflater().inflate(R.layout.simple_way_point, null);
+                rowView = getInflater().inflate(R.layout.simple_way_point, parent, false);
                 viewHolder = new ViewHolder(rowView);
             }
             else {
@@ -99,13 +112,13 @@ public class NavigateAnyPointActivity extends AbstractActivity {
             return rowView;
         }
 
-        private void fillViewHolder(ViewHolder viewHolder, Destination loc) {
-            String lonString = loc.getCoords().format(GeopointFormatter.Format.LON_DECMINUTE);
-            String latString = loc.getCoords().format(GeopointFormatter.Format.LAT_DECMINUTE);
+        private static void fillViewHolder(final ViewHolder viewHolder, final Destination loc) {
+            final String lonString = loc.getCoords().format(GeopointFormatter.Format.LON_DECMINUTE);
+            final String latString = loc.getCoords().format(GeopointFormatter.Format.LAT_DECMINUTE);
 
             viewHolder.longitude.setText(lonString);
             viewHolder.latitude.setText(latString);
-            viewHolder.date.setText(Formatter.formatShortDateTime(getContext(), loc.getDate()));
+            viewHolder.date.setText(Formatter.formatShortDateTime(loc.getDate()));
         }
 
         private LayoutInflater getInflater() {
@@ -118,20 +131,20 @@ public class NavigateAnyPointActivity extends AbstractActivity {
     }
 
     @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState, R.layout.point);
-        Views.inject(this);
+    public void onCreate(final Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState, R.layout.navigateanypoint_activity);
+        ButterKnife.bind(this);
 
         createHistoryView();
         init();
     }
 
     private void createHistoryView() {
-        final View pointControls = getLayoutInflater().inflate(R.layout.point_controls, null);
+        final View pointControls = getLayoutInflater().inflate(R.layout.navigateanypoint_header, historyListView, false);
         historyListView.addHeaderView(pointControls, null, false);
 
         // inject a second time to also find the dynamically expanded views above
-        Views.inject(this);
+        ButterKnife.bind(this);
 
         if (getHistoryOfSearchedLocations().isEmpty()) {
             historyListView.addFooterView(getEmptyHistoryFooter(), null, false);
@@ -141,8 +154,8 @@ public class NavigateAnyPointActivity extends AbstractActivity {
         historyListView.setOnItemClickListener(new OnItemClickListener() {
 
             @Override
-            public void onItemClick(AdapterView<?> arg0, View arg1, int arg2,
-                    long arg3) {
+            public void onItemClick(final AdapterView<?> arg0, final View arg1, final int arg2,
+                    final long arg3) {
                 final Object selection = arg0.getItemAtPosition(arg2);
                 if (selection instanceof Destination) {
                     navigateTo(((Destination) selection).getCoords());
@@ -152,8 +165,8 @@ public class NavigateAnyPointActivity extends AbstractActivity {
 
         historyListView.setOnCreateContextMenuListener(new OnCreateContextMenuListener() {
             @Override
-            public void onCreateContextMenu(ContextMenu menu, View v,
-                    ContextMenuInfo menuInfo) {
+            public void onCreateContextMenu(final ContextMenu menu, final View v,
+                    final ContextMenuInfo menuInfo) {
                 menu.add(Menu.NONE, CONTEXT_MENU_NAVIGATE, Menu.NONE, res.getString(R.string.cache_menu_navigate));
                 menu.add(Menu.NONE, CONTEXT_MENU_EDIT_WAYPOINT, Menu.NONE, R.string.waypoint_edit);
                 menu.add(Menu.NONE, CONTEXT_MENU_DELETE_WAYPOINT, Menu.NONE, R.string.waypoint_delete);
@@ -162,10 +175,10 @@ public class NavigateAnyPointActivity extends AbstractActivity {
     }
 
     @Override
-    public boolean onContextItemSelected(MenuItem item) {
-        AdapterView.AdapterContextMenuInfo menuInfo = (AdapterView.AdapterContextMenuInfo) item.getMenuInfo();
+    public boolean onContextItemSelected(final MenuItem item) {
+        final AdapterView.AdapterContextMenuInfo menuInfo = (AdapterView.AdapterContextMenuInfo) item.getMenuInfo();
         final int position = (null != menuInfo) ? menuInfo.position : contextMenuItemPosition;
-        Object destination = historyListView.getItemAtPosition(position);
+        final Object destination = historyListView.getItemAtPosition(position);
 
         switch (item.getItemId()) {
             case CONTEXT_MENU_NAVIGATE:
@@ -185,8 +198,8 @@ public class NavigateAnyPointActivity extends AbstractActivity {
             case CONTEXT_MENU_EDIT_WAYPOINT:
                 if (destination instanceof Destination) {
                     final Geopoint gp = ((Destination) destination).getCoords();
-                    latButton.setText(gp.format(GeopointFormatter.Format.LAT_DECMINUTE));
-                    lonButton.setText(gp.format(GeopointFormatter.Format.LON_DECMINUTE));
+                    getLatButton().setText(gp.format(GeopointFormatter.Format.LAT_DECMINUTE));
+                    getLonButton().setText(gp.format(GeopointFormatter.Format.LON_DECMINUTE));
                 }
                 return true;
             default:
@@ -197,7 +210,7 @@ public class NavigateAnyPointActivity extends AbstractActivity {
 
     private TextView getEmptyHistoryFooter() {
         if (historyFooter == null) {
-            historyFooter = (TextView) getLayoutInflater().inflate(R.layout.caches_footer, null);
+            historyFooter = (TextView) getLayoutInflater().inflate(R.layout.cacheslist_footer, historyListView, false);
             historyFooter.setText(R.string.search_history_empty);
         }
         return historyFooter;
@@ -213,14 +226,14 @@ public class NavigateAnyPointActivity extends AbstractActivity {
     private List<Destination> getHistoryOfSearchedLocations() {
         if (historyOfSearchedLocations == null) {
             // Load from database
-            historyOfSearchedLocations = cgData.loadHistoryOfSearchedLocations();
+            historyOfSearchedLocations = DataStore.loadHistoryOfSearchedLocations();
         }
 
         return historyOfSearchedLocations;
     }
 
     @Override
-    public void onConfigurationChanged(Configuration newConfig) {
+    public void onConfigurationChanged(final Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
 
         init();
@@ -228,109 +241,106 @@ public class NavigateAnyPointActivity extends AbstractActivity {
 
     @Override
     public void onResume() {
-        super.onResume();
-        geoDirHandler.startGeo();
+        super.onResume(geoDirHandler.start(GeoDirHandler.UPDATE_GEODATA));
         init();
     }
 
-    @Override
-    public void onPause() {
-        geoDirHandler.stopGeo();
-        super.onPause();
-    }
-
     private void init() {
-        latButton.setOnClickListener(new CoordDialogListener());
-        lonButton.setOnClickListener(new CoordDialogListener());
+        getLatButton().setOnClickListener(new CoordDialogListener());
+        getLonButton().setOnClickListener(new CoordDialogListener());
 
         final Geopoint coords = Settings.getAnyCoordinates();
         if (coords != null) {
-            latButton.setText(coords.format(GeopointFormatter.Format.LAT_DECMINUTE));
-            lonButton.setText(coords.format(GeopointFormatter.Format.LON_DECMINUTE));
+            getLatButton().setText(coords.format(GeopointFormatter.Format.LAT_DECMINUTE));
+            getLonButton().setText(coords.format(GeopointFormatter.Format.LON_DECMINUTE));
         }
 
-        buttonCurrent.setOnClickListener(new CurrentListener());
+        getButtonCurrent().setOnClickListener(new CurrentListener());
 
         getDestionationHistoryAdapter().notifyDataSetChanged();
-        disableSuggestions(distanceEditText);
+        disableSuggestions(getDistanceEditText());
 
         initializeDistanceUnitSelector();
     }
 
     private void initializeDistanceUnitSelector() {
         if (StringUtils.isBlank(distanceUnit)) {
-            if (Settings.isUseMetricUnits()) {
-                distanceUnitSelector.setSelection(0); // m
-                distanceUnit = res.getStringArray(R.array.distance_units)[0];
-            } else {
-                distanceUnitSelector.setSelection(2); // ft
+            if (Settings.useImperialUnits()) {
+                getDistanceUnitSelector().setSelection(2); // ft
                 distanceUnit = res.getStringArray(R.array.distance_units)[2];
+            } else {
+                getDistanceUnitSelector().setSelection(0); // m
+                distanceUnit = res.getStringArray(R.array.distance_units)[0];
             }
         }
 
-        distanceUnitSelector.setOnItemSelectedListener(new ChangeDistanceUnit(this));
+        getDistanceUnitSelector().setOnItemSelectedListener(new ChangeDistanceUnit(this));
     }
 
     private class CoordDialogListener implements View.OnClickListener {
 
         @Override
-        public void onClick(View arg0) {
+        public void onClick(final View arg0) {
             Geopoint gp = null;
-            if (latButton.getText().length() > 0 && lonButton.getText().length() > 0) {
-                gp = new Geopoint(latButton.getText().toString() + " " + lonButton.getText().toString());
+            if (getLatButton().getText().length() > 0 && getLonButton().getText().length() > 0) {
+                gp = new Geopoint(getLatButton().getText().toString() + " " + getLonButton().getText().toString());
             }
-            CoordinatesInputDialog coordsDialog = new CoordinatesInputDialog(NavigateAnyPointActivity.this, null, gp, app.currentGeo());
+            final CoordinatesInputDialog coordsDialog = CoordinatesInputDialog.getInstance(null, gp, Sensors.getInstance().currentGeo());
             coordsDialog.setCancelable(true);
-            coordsDialog.setOnCoordinateUpdate(new CoordinatesInputDialog.CoordinateUpdate() {
-                @Override
-                public void update(Geopoint gp) {
-                    latButton.setText(gp.format(GeopointFormatter.Format.LAT_DECMINUTE));
-                    lonButton.setText(gp.format(GeopointFormatter.Format.LON_DECMINUTE));
-                    changed = true;
-                }
-            });
-            coordsDialog.show();
+            coordsDialog.show(getSupportFragmentManager(),"wpedit_dialog");
         }
+
+    }
+    @Override
+    public void updateCoordinates(final Geopoint gp) {
+        getLatButton().setText(gp.format(GeopointFormatter.Format.LAT_DECMINUTE));
+        getLonButton().setText(gp.format(GeopointFormatter.Format.LON_DECMINUTE));
+        changed = true;
     }
 
     private static class ChangeDistanceUnit implements OnItemSelectedListener {
 
-        private ChangeDistanceUnit(NavigateAnyPointActivity unitView) {
+        private ChangeDistanceUnit(final NavigateAnyPointActivity unitView) {
             this.unitView = unitView;
         }
 
-        private NavigateAnyPointActivity unitView;
+        private final NavigateAnyPointActivity unitView;
 
         @Override
-        public void onItemSelected(AdapterView<?> arg0, View arg1, int arg2,
-                long arg3) {
+        public void onItemSelected(final AdapterView<?> arg0, final View arg1, final int arg2,
+                final long arg3) {
             unitView.distanceUnit = (String) arg0.getItemAtPosition(arg2);
         }
 
         @Override
-        public void onNothingSelected(AdapterView<?> arg0) {
+        public void onNothingSelected(final AdapterView<?> arg0) {
         }
     }
 
     @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
+    public boolean onCreateOptionsMenu(final Menu menu) {
         getMenuInflater().inflate(R.menu.navigate_any_point_activity_options, menu);
-        menu.findItem(R.id.menu_default_navigation).setTitle(NavigationAppFactory.getDefaultNavigationApplication().getName());
+        final MenuItem menuItem = menu.findItem(R.id.menu_default_navigation);
+        menuItem.setTitle(NavigationAppFactory.getDefaultNavigationApplication().getName());
+        final NavigationActionProvider navAction = (NavigationActionProvider) MenuItemCompat.getActionProvider(menuItem);
+        if (navAction != null) {
+            navAction.setNavigationSource(this);
+        }
         return true;
     }
 
     @Override
-    public boolean onPrepareOptionsMenu(Menu menu) {
+    public boolean onPrepareOptionsMenu(final Menu menu) {
         super.onPrepareOptionsMenu(menu);
 
         try {
-            boolean visible = getDestination() != null;
+            final boolean visible = getDestination() != null;
             menu.findItem(R.id.menu_navigate).setVisible(visible);
             menu.findItem(R.id.menu_default_navigation).setVisible(visible);
             menu.findItem(R.id.menu_caches_around).setVisible(visible);
 
-            menu.findItem(R.id.menu_clear_history).setEnabled(!getHistoryOfSearchedLocations().isEmpty());
-        } catch (Exception e) {
+            menu.findItem(R.id.menu_clear_history).setVisible(!getHistoryOfSearchedLocations().isEmpty());
+        } catch (final RuntimeException ignored) {
             // nothing
         }
 
@@ -338,22 +348,16 @@ public class NavigateAnyPointActivity extends AbstractActivity {
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    public boolean onOptionsItemSelected(final MenuItem item) {
         final int menuItem = item.getItemId();
-
-        final Geopoint coords = getDestination();
-
-        if (coords != null) {
-            addToHistory(coords);
-        }
-
+        final Geopoint coords = getDestinationAndAddToHistory();
         switch (menuItem) {
             case R.id.menu_default_navigation:
-                navigateTo();
+                navigateTo(coords);
                 return true;
 
             case R.id.menu_caches_around:
-                cachesAround();
+                cachesAround(coords);
                 return true;
 
             case R.id.menu_clear_history:
@@ -363,39 +367,49 @@ public class NavigateAnyPointActivity extends AbstractActivity {
             case R.id.menu_navigate:
                 NavigationAppFactory.showNavigationMenu(this, null, null, coords);
                 return true;
-            default:
-                return false;
         }
+        return super.onOptionsItemSelected(item);
     }
 
-    private void addToHistory(final Geopoint coords) {
+    private Geopoint getDestinationAndAddToHistory() {
+        final Geopoint coords = getDestination();
+        addToHistory(coords);
+        return coords;
+    }
+
+    private void addToHistory(@Nullable final Geopoint coords) {
+        if (coords == null) {
+            return;
+        }
+
         // Add locations to history
         final Destination loc = new Destination(coords);
 
         if (!getHistoryOfSearchedLocations().contains(loc)) {
             getHistoryOfSearchedLocations().add(0, loc);
-
-            // Save location
-            cgData.saveSearchedDestination(loc);
-
-            // Ensure to remove the footer
-            historyListView.removeFooterView(getEmptyHistoryFooter());
-
-            runOnUiThread(new Runnable() {
+            RxUtils.andThenOnUi(Schedulers.io(), new Action0() {
                 @Override
-                public void run() {
+                public void call() {
+                    // Save location
+                    DataStore.saveSearchedDestination(loc);
+                }
+            }, new Action0() {
+                @Override
+                public void call() {
+                    // Ensure to remove the footer
+                    historyListView.removeFooterView(getEmptyHistoryFooter());
                     destinationHistoryAdapter.notifyDataSetChanged();
                 }
             });
         }
     }
 
-    private void removeFromHistory(Destination destination) {
+    private void removeFromHistory(final Destination destination) {
         if (getHistoryOfSearchedLocations().contains(destination)) {
             getHistoryOfSearchedLocations().remove(destination);
 
             // Save
-            cgData.removeSearchedDestination(destination);
+            DataStore.removeSearchedDestination(destination);
 
             if (getHistoryOfSearchedLocations().isEmpty()) {
                 if (historyListView.getFooterViewsCount() == 0) {
@@ -414,7 +428,7 @@ public class NavigateAnyPointActivity extends AbstractActivity {
             getHistoryOfSearchedLocations().clear();
 
             // Save
-            cgData.clearSearchedDestinations();
+            DataStore.clearSearchedDestinations();
 
             if (historyListView.getFooterViewsCount() == 0) {
                 historyListView.addFooterView(getEmptyHistoryFooter());
@@ -426,35 +440,34 @@ public class NavigateAnyPointActivity extends AbstractActivity {
         }
     }
 
-    private void navigateTo() {
-        navigateTo(getDestination());
-    }
-
-    private void navigateTo(Geopoint geopoint) {
-        NavigationAppFactory.startDefaultNavigationApplication(1, this, geopoint);
-    }
-
-    private void cachesAround() {
-        final Geopoint coords = getDestination();
-
+    private void navigateTo(final Geopoint coords) {
         if (coords == null) {
             showToast(res.getString(R.string.err_location_unknown));
             return;
         }
 
-        cgeocaches.startActivityCoordinates(this, coords);
+        NavigationAppFactory.startDefaultNavigationApplication(1, this, coords);
+    }
+
+    private void cachesAround(final Geopoint coords) {
+        if (coords == null) {
+            showToast(res.getString(R.string.err_location_unknown));
+            return;
+        }
+
+        CacheListActivity.startActivityCoordinates(this, coords, null);
 
         finish();
     }
 
     private final GeoDirHandler geoDirHandler = new GeoDirHandler() {
         @Override
-        public void updateGeoData(final IGeoData geo) {
+        public void updateGeoData(final GeoData geo) {
             try {
-                latButton.setHint(geo.getCoords().format(GeopointFormatter.Format.LAT_DECMINUTE_RAW));
-                lonButton.setHint(geo.getCoords().format(GeopointFormatter.Format.LON_DECMINUTE_RAW));
-            } catch (final Exception e) {
-                Log.w("Failed to update location.");
+                getLatButton().setHint(geo.getCoords().format(GeopointFormatter.Format.LAT_DECMINUTE_RAW));
+                getLonButton().setHint(geo.getCoords().format(GeopointFormatter.Format.LON_DECMINUTE_RAW));
+            } catch (final RuntimeException e) {
+                Log.w("Failed to update location", e);
             }
         }
     };
@@ -462,26 +475,20 @@ public class NavigateAnyPointActivity extends AbstractActivity {
     private class CurrentListener implements View.OnClickListener {
 
         @Override
-        public void onClick(View arg0) {
-            final Geopoint coords = app.currentGeo().getCoords();
-            if (coords == null) {
-                showToast(res.getString(R.string.err_point_unknown_position));
-                return;
-            }
-
-            latButton.setText(coords.format(GeopointFormatter.Format.LAT_DECMINUTE));
-            lonButton.setText(coords.format(GeopointFormatter.Format.LON_DECMINUTE));
-
+        public void onClick(final View arg0) {
+            final Geopoint coords = Sensors.getInstance().currentGeo().getCoords();
+            getLatButton().setText(coords.format(GeopointFormatter.Format.LAT_DECMINUTE));
+            getLonButton().setText(coords.format(GeopointFormatter.Format.LON_DECMINUTE));
             changed = false;
         }
     }
 
     private Geopoint getDestination() {
-        String bearingText = bearingEditText.getText().toString();
+        final String bearingText = getBearingEditText().getText().toString();
         // combine distance from EditText and distanceUnit saved from Spinner
-        String distanceText = distanceEditText.getText().toString() + distanceUnit;
-        String latText = latButton.getText().toString();
-        String lonText = lonButton.getText().toString();
+        final String distanceText = getDistanceEditText().getText().toString() + distanceUnit;
+        final String latText = getLatButton().getText().toString();
+        final String lonText = getLonButton().getText().toString();
 
         if (StringUtils.isBlank(bearingText) && StringUtils.isBlank(distanceText)
                 && StringUtils.isBlank(latText) && StringUtils.isBlank(lonText)) {
@@ -489,59 +496,45 @@ public class NavigateAnyPointActivity extends AbstractActivity {
             return null;
         }
 
+        // get base coordinates
         Geopoint coords;
         if (StringUtils.isNotBlank(latText) && StringUtils.isNotBlank(lonText)) {
             try {
                 coords = new Geopoint(latText, lonText);
-            } catch (Geopoint.ParseException e) {
+            } catch (final Geopoint.ParseException e) {
                 showToast(res.getString(e.resource));
                 return null;
             }
         } else {
-            if (app.currentGeo().getCoords() == null) {
-                showToast(res.getString(R.string.err_point_curr_position_unavailable));
-                return null;
-            }
-
-            coords = app.currentGeo().getCoords();
+            coords = Sensors.getInstance().currentGeo().getCoords();
         }
 
-        Geopoint result;
+        // apply projection
         if (StringUtils.isNotBlank(bearingText) && StringUtils.isNotBlank(distanceText)) {
             // bearing & distance
-            double bearing;
+            final double bearing;
             try {
                 bearing = Double.parseDouble(bearingText);
-            } catch (NumberFormatException e) {
-                helpDialog(res.getString(R.string.err_point_bear_and_dist_title), res.getString(R.string.err_point_bear_and_dist));
+            } catch (final NumberFormatException ignored) {
+                Dialogs.message(this, R.string.err_point_bear_and_dist_title, R.string.err_point_bear_and_dist);
                 return null;
             }
 
-            double distance;
+            final double distance;
             try {
-                distance = DistanceParser.parseDistance(distanceText, Settings.isUseMetricUnits());
-            } catch (NumberFormatException e) {
+                distance = DistanceParser.parseDistance(distanceText,
+                        !Settings.useImperialUnits());
+            } catch (final NumberFormatException ignored) {
                 showToast(res.getString(R.string.err_parse_dist));
                 return null;
             }
 
-            final Geopoint coordsDst = coords.project(bearing, distance);
-
-            if (coordsDst == null) {
-                showToast(res.getString(R.string.err_point_location_error));
-                return null;
-            }
-
-            result = coordsDst;
-        } else if (coords != null) {
-            result = coords;
-        } else {
-            return null;
+            coords = coords.project(bearing, distance);
         }
 
-        saveCoords(result);
+        saveCoords(coords);
 
-        return result;
+        return coords;
     }
 
     private void saveCoords(final Geopoint coords) {
@@ -550,4 +543,39 @@ public class NavigateAnyPointActivity extends AbstractActivity {
         }
         Settings.setAnyCoordinates(coords);
     }
+
+    @Override
+    public void startDefaultNavigation() {
+        navigateTo(getDestinationAndAddToHistory());
+    }
+
+    @Override
+    public void startDefaultNavigation2() {
+        NavigationAppFactory.startDefaultNavigationApplication(2, this, getDestinationAndAddToHistory());
+    }
+
+    private Button getLatButton() {
+        return latButton;
+    }
+
+    private Button getLonButton() {
+        return lonButton;
+    }
+
+    private EditText getDistanceEditText() {
+        return distanceEditText;
+    }
+
+    private Spinner getDistanceUnitSelector() {
+        return distanceUnitSelector;
+    }
+
+    private Button getButtonCurrent() {
+        return buttonCurrent;
+    }
+
+    private EditText getBearingEditText() {
+        return bearingEditText;
+    }
+
 }

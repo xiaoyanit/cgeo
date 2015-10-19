@@ -1,23 +1,30 @@
 package cgeo.geocaching.utils;
 
-import cgeo.geocaching.R;
-import cgeo.geocaching.Settings;
-import cgeo.geocaching.Trackable;
 import cgeo.geocaching.Geocache;
-import cgeo.geocaching.connector.gc.GCConstants;
-import cgeo.geocaching.connector.gc.Login;
-import cgeo.geocaching.network.Network;
-import cgeo.geocaching.ui.Formatter;
+import cgeo.geocaching.LogEntry;
+import cgeo.geocaching.R;
+import cgeo.geocaching.Trackable;
+import cgeo.geocaching.connector.ConnectorFactory;
+import cgeo.geocaching.connector.IConnector;
+import cgeo.geocaching.connector.capability.ILogin;
+import cgeo.geocaching.settings.Settings;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.NonNull;
+import org.eclipse.jdt.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.List;
 
 /**
- * provides all the available templates for logging
+ * Provides all the available templates for logging.
  *
  */
-public class LogTemplateProvider {
+public final class LogTemplateProvider {
+
+    private LogTemplateProvider() {
+        // utility class
+    }
 
     /**
      * Context aware data container for log templates.
@@ -31,70 +38,81 @@ public class LogTemplateProvider {
         private Geocache cache;
         private Trackable trackable;
         private boolean offline = false;
+        private final LogEntry logEntry;
 
-        public LogContext(final Geocache cache) {
-            this(cache, false);
+        public LogContext(final Geocache cache, final LogEntry logEntry) {
+            this(cache, logEntry, false);
         }
 
-        public LogContext(final Trackable trackable) {
+        public LogContext(final Trackable trackable, final LogEntry logEntry) {
             this.trackable = trackable;
+            this.logEntry = logEntry;
         }
 
-        public LogContext(boolean offline) {
-            this(null, offline);
-        }
-
-        public LogContext(final Geocache cache, boolean offline) {
+        public LogContext(final Geocache cache, final LogEntry logEntry, final boolean offline) {
             this.cache = cache;
             this.offline = offline;
+            this.logEntry = logEntry;
         }
 
-        public Geocache getCache() {
+        public final Geocache getCache() {
             return cache;
         }
 
-        public Trackable getTrackable() {
+        public final Trackable getTrackable() {
             return trackable;
         }
 
-        public boolean isOffline() {
+        public final boolean isOffline() {
             return offline;
+        }
+
+        public final LogEntry getLogEntry() {
+            return logEntry;
         }
     }
 
-    public static abstract class LogTemplate {
+    public abstract static class LogTemplate {
         private final String template;
         private final int resourceId;
 
-        protected LogTemplate(String template, int resourceId) {
+        protected LogTemplate(final String template, final int resourceId) {
             this.template = template;
             this.resourceId = resourceId;
         }
 
-        abstract public String getValue(LogContext context);
+        public abstract String getValue(LogContext context);
 
-        public int getResourceId() {
+        public final int getResourceId() {
             return resourceId;
         }
 
-        public int getItemId() {
+        public final int getItemId() {
             return template.hashCode();
         }
 
-        public String getTemplateString() {
+        public final String getTemplateString() {
             return template;
         }
 
-        protected String apply(String input, LogContext context) {
-            if (input.contains("[" + template + "]")) {
-                return StringUtils.replace(input, "[" + template + "]", getValue(context));
+        @NonNull
+        private final String apply(@NonNull final String input, final LogContext context) {
+            final String bracketedTemplate = "[" + template + "]";
+
+            // check containment first to not unconditionally call the getValue(...) method
+            if (input.contains(bracketedTemplate)) {
+                return StringUtils.replace(input, bracketedTemplate, getValue(context));
             }
             return input;
         }
     }
 
-    public static ArrayList<LogTemplate> getTemplates() {
-        ArrayList<LogTemplate> templates = new ArrayList<LogTemplateProvider.LogTemplate>();
+    /**
+     * @return all templates, but not the signature template itself
+     */
+    @NonNull
+    public static List<LogTemplate> getTemplatesWithoutSignature() {
+        final List<LogTemplate> templates = new ArrayList<>();
         templates.add(new LogTemplate("DATE", R.string.init_signature_template_date) {
 
             @Override
@@ -121,6 +139,13 @@ public class LogTemplateProvider {
 
             @Override
             public String getValue(final LogContext context) {
+                final Geocache cache = context.getCache();
+                if (cache != null) {
+                    final IConnector connector = ConnectorFactory.getConnector(cache);
+                    if (connector instanceof ILogin) {
+                        return ((ILogin) connector).getUserName();
+                    }
+                }
                 return Settings.getUsername();
             }
         });
@@ -128,42 +153,113 @@ public class LogTemplateProvider {
 
             @Override
             public String getValue(final LogContext context) {
-                int current = Login.getActualCachesFound();
-                if (current == 0) {
-                    if (context.isOffline()) {
-                        return "";
-                    }
-                    final String page = Network.getResponseData(Network.getRequest("http://www.geocaching.com/email/"));
-                    current = parseFindCount(page);
+                final Geocache cache = context.getCache();
+                if (cache == null) {
+                    return StringUtils.EMPTY;
                 }
 
-                String findCount = "";
-                if (current >= 0) {
-                    findCount = String.valueOf(current + 1);
+                int current = 0;
+                final IConnector connector = ConnectorFactory.getConnector(cache);
+                if (connector instanceof ILogin) {
+                    current = ((ILogin) connector).getCachesFound();
                 }
-                return findCount;
+
+                // try updating the login information, if the counter is zero
+                if (current == 0) {
+                    if (context.isOffline()) {
+                        return StringUtils.EMPTY;
+                    }
+                    if (connector instanceof ILogin) {
+                        ((ILogin) connector).login(null, null);
+                        current = ((ILogin) connector).getCachesFound();
+                    }
+                }
+
+                if (current >= 0) {
+                    return String.valueOf(current + 1);
+                }
+                return StringUtils.EMPTY;
             }
         });
         templates.add(new LogTemplate("OWNER", R.string.init_signature_template_owner) {
 
             @Override
             public String getValue(final LogContext context) {
-                Trackable trackable = context.getTrackable();
+                final Trackable trackable = context.getTrackable();
                 if (trackable != null) {
                     return trackable.getOwner();
                 }
-                Geocache cache = context.getCache();
+                final Geocache cache = context.getCache();
                 if (cache != null) {
                     return cache.getOwnerDisplayName();
                 }
-                return "";
+                return StringUtils.EMPTY;
+            }
+        });
+        templates.add(new LogTemplate("NAME", R.string.init_signature_template_name) {
+            @Override
+            public String getValue(final LogContext context) {
+                final Trackable trackable = context.getTrackable();
+                if (trackable != null) {
+                    return trackable.getName();
+                }
+                final Geocache cache = context.getCache();
+                if (cache != null) {
+                    return cache.getName();
+                }
+                return StringUtils.EMPTY;
+            }
+        });
+        templates.add(new LogTemplate("URL", R.string.init_signature_template_url) {
+
+            @Override
+            public String getValue(final LogContext context) {
+                final Trackable trackable = context.getTrackable();
+                if (trackable != null) {
+                    return trackable.getUrl();
+                }
+                final Geocache cache = context.getCache();
+                if (cache != null) {
+                    return StringUtils.defaultString(cache.getUrl());
+                }
+                return StringUtils.EMPTY;
+            }
+        });
+        templates.add(new LogTemplate("LOG", R.string.init_signature_template_log) {
+            @Override
+            public String getValue(final LogContext context) {
+                final LogEntry logEntry = context.getLogEntry();
+                if (logEntry != null) {
+                    return logEntry.getDisplayText();
+                }
+                return StringUtils.EMPTY;
             }
         });
         return templates;
     }
 
-    public static LogTemplate getTemplate(int itemId) {
-        for (LogTemplate template : getTemplates()) {
+    /**
+     * @return all templates, including the signature template
+     */
+    @NonNull
+    public static List<LogTemplate> getTemplatesWithSignature() {
+        final List<LogTemplate> templates = getTemplatesWithoutSignature();
+        templates.add(new LogTemplate("SIGNATURE", R.string.init_signature) {
+            @Override
+            public String getValue(final LogContext context) {
+                final String nestedTemplate = Settings.getSignature();
+                if (StringUtils.contains(nestedTemplate, "SIGNATURE")) {
+                    return "invalid signature template";
+                }
+                return applyTemplates(nestedTemplate, context);
+            }
+        });
+        return templates;
+    }
+
+    @Nullable
+    public static LogTemplate getTemplate(final int itemId) {
+        for (final LogTemplate template : getTemplatesWithSignature()) {
             if (template.getItemId() == itemId) {
                 return template;
             }
@@ -171,27 +267,11 @@ public class LogTemplateProvider {
         return null;
     }
 
-    public static String applyTemplates(String signature, LogContext context) {
-        if (signature == null) {
-            return "";
-        }
+    public static String applyTemplates(@NonNull final String signature, final LogContext context) {
         String result = signature;
-        for (LogTemplate template : getTemplates()) {
+        for (final LogTemplate template : getTemplatesWithSignature()) {
             result = template.apply(result, context);
         }
         return result;
-    }
-
-    private static int parseFindCount(String page) {
-        if (StringUtils.isBlank(page)) {
-            return -1;
-        }
-
-        try {
-            return Integer.parseInt(BaseUtils.getMatch(page, GCConstants.PATTERN_CACHES_FOUND, true, "-1").replaceAll("[,.]", ""));
-        } catch (NumberFormatException e) {
-            Log.e("parseFindCount", e);
-            return -1;
-        }
     }
 }

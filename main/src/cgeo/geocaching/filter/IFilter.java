@@ -2,17 +2,22 @@ package cgeo.geocaching.filter;
 
 import cgeo.geocaching.Geocache;
 
+import org.eclipse.jdt.annotation.NonNull;
+
+import android.os.Parcelable;
+
 import java.util.List;
 
-public interface IFilter {
+public interface IFilter extends Parcelable {
 
-    public abstract String getName();
+    @NonNull
+    String getName();
 
     /**
-     * @param cache
-     * @return true if the filter accepts the cache, false otherwise
+     * @return {@code true} if the filter accepts the cache, false otherwise
      */
-    public abstract boolean accepts(final Geocache cache);
+    boolean accepts(@NonNull final Geocache cache);
 
-    public void filter(final List<Geocache> list);
+    void filter(@NonNull final List<Geocache> list);
+
 }

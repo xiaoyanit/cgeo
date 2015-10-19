@@ -5,12 +5,7 @@ import cgeo.geocaching.Geocache;
 /**
  * sorts caches by number of items in inventory
  */
-public class InventoryComparator extends AbstractCacheComparator {
-
-    @Override
-    protected boolean canCompare(final Geocache cache1, final Geocache cache2) {
-        return true;
-    }
+class InventoryComparator extends AbstractCacheComparator {
 
     @Override
     protected int compareCaches(final Geocache cache1, final Geocache cache2) {

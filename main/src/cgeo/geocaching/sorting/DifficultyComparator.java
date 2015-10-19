@@ -6,11 +6,11 @@ import cgeo.geocaching.Geocache;
  * sorts caches by difficulty
  *
  */
-public class DifficultyComparator extends AbstractCacheComparator {
+class DifficultyComparator extends AbstractCacheComparator {
 
     @Override
-    protected boolean canCompare(Geocache cache1, Geocache cache2) {
-        return cache1.getDifficulty() != 0.0 && cache2.getDifficulty() != 0.0;
+    protected boolean canCompare(final Geocache cache) {
+        return cache.getDifficulty() != 0.0;
     }
 
     @Override

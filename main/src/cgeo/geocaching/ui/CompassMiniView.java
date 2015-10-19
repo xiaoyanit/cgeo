@@ -1,9 +1,11 @@
 package cgeo.geocaching.ui;
 
 import cgeo.geocaching.R;
-import cgeo.geocaching.Settings;
-import cgeo.geocaching.geopoint.Geopoint;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.settings.Settings;
 import cgeo.geocaching.utils.AngleUtils;
+
+import org.eclipse.jdt.annotation.NonNull;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -21,12 +23,8 @@ final public class CompassMiniView extends View {
     /**
      * remember the last state of drawing so we can avoid repainting for very small changes
      */
-    private float lastDrawingAzimuth;
+    private float lastDrawnAzimuth;
 
-    /**
-     * lazy initialized bitmap resource depending on selected skin
-     */
-    private static int arrowSkin = 0;
     /**
      * bitmap shared by all instances of the view
      */
@@ -49,47 +47,32 @@ final public class CompassMiniView extends View {
      */
     private static final int ARROW_BITMAP_SIZE = 21;
     private static final PaintFlagsDrawFilter FILTER_SET = new PaintFlagsDrawFilter(0, Paint.FILTER_BITMAP_FLAG);
-    private static final PaintFlagsDrawFilter FILTER_REMOVE = new PaintFlagsDrawFilter(Paint.FILTER_BITMAP_FLAG, 0);
     private static final float MINIMUM_ROTATION_DEGREES_FOR_REPAINT = 5;
+    private float azimuthRelative;
 
-    public CompassMiniView(Context context) {
+    public CompassMiniView(final Context context) {
         super(context);
-        initializeResources(context);
     }
 
-    public CompassMiniView(Context context, AttributeSet attrs) {
+    public CompassMiniView(final Context context, final AttributeSet attrs) {
         super(context, attrs);
-        initializeResources(context);
     }
 
-    private static void initializeResources(final Context context) {
-        if (arrowSkin == 0) {
-            if (Settings.isLightSkin()) {
-                arrowSkin = R.drawable.compass_arrow_mini_black;
-            } else {
-                arrowSkin = R.drawable.compass_arrow_mini_white;
-            }
-        }
-        if (compassArrow == null) {
-            compassArrow = BitmapFactory.decodeResource(context.getResources(), arrowSkin);
+    @Override
+    public void onAttachedToWindow() {
+        if (instances++ == 0) {
+            final int drawable = isInEditMode() || !Settings.isLightSkin() ? R.drawable.compass_arrow_mini_white : R.drawable.compass_arrow_mini_black;
+            compassArrow = BitmapFactory.decodeResource(getResources(), drawable);
             compassArrowWidth = compassArrow.getWidth();
             compassArrowHeight = compassArrow.getWidth();
         }
     }
 
     @Override
-    public void onAttachedToWindow() {
-        instances++;
-    }
-
-    @Override
     public void onDetachedFromWindow() {
-        instances--;
-        if (instances == 0) {
-            if (compassArrow != null) {
-                compassArrow.recycle();
-                compassArrow = null;
-            }
+        super.onDetachedFromWindow();
+        if (--instances == 0) {
+            compassArrow.recycle();
         }
     }
 
@@ -97,18 +80,18 @@ final public class CompassMiniView extends View {
         targetCoords = point;
     }
 
-    public void updateAzimuth(float azimuth) {
+    void updateAzimuth(final float azimuth) {
         this.azimuth = azimuth;
         updateDirection();
     }
 
-    public void updateHeading(float heading) {
+    void updateHeading(final float heading) {
         this.heading = heading;
         updateDirection();
     }
 
-    public void updateCurrentCoords(final Geopoint currentCoords) {
-        if (currentCoords == null || targetCoords == null) {
+    void updateCurrentCoords(@NonNull final Geopoint currentCoords) {
+        if (targetCoords == null) {
             return;
         }
 
@@ -121,10 +104,10 @@ final public class CompassMiniView extends View {
             return;
         }
 
-        float azimuthRelative = calculateAzimuthRelative();
+        azimuthRelative = AngleUtils.normalize(azimuth - heading);
 
         // avoid updates on very small changes, which are not visible to the user
-        float change = Math.abs(azimuthRelative - lastDrawingAzimuth);
+        final float change = Math.abs(azimuthRelative - lastDrawnAzimuth);
         if (change < MINIMUM_ROTATION_DEGREES_FOR_REPAINT) {
             return;
         }
@@ -137,38 +120,29 @@ final public class CompassMiniView extends View {
     }
 
     @Override
-    protected void onDraw(Canvas canvas) {
+    protected void onDraw(final Canvas canvas) {
         super.onDraw(canvas);
 
-        float azimuthRelative = calculateAzimuthRelative();
-        lastDrawingAzimuth = azimuthRelative;
+        lastDrawnAzimuth = azimuthRelative;
 
         // compass margins
-        canvas.setDrawFilter(FILTER_SET);
-
         final int canvasCenterX = getWidth() / 2;
         final int canvasCenterY = getHeight() / 2;
 
         final int marginLeft = (getWidth() - compassArrowWidth) / 2;
         final int marginTop = (getHeight() - compassArrowHeight) / 2;
 
+        canvas.setDrawFilter(FILTER_SET);
         canvas.rotate(-azimuthRelative, canvasCenterX, canvasCenterY);
         canvas.drawBitmap(compassArrow, marginLeft, marginTop, null);
-        canvas.rotate(azimuthRelative, canvasCenterX, canvasCenterY);
-
-        canvas.setDrawFilter(FILTER_REMOVE);
-    }
-
-    private float calculateAzimuthRelative() {
-        return AngleUtils.normalize(azimuth - heading);
     }
 
     @Override
-    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+    protected void onMeasure(final int widthMeasureSpec, final int heightMeasureSpec) {
         setMeasuredDimension(measureWidth(widthMeasureSpec), measureHeight(heightMeasureSpec));
     }
 
-    private int measureWidth(int measureSpec) {
+    private int measureWidth(final int measureSpec) {
         final int specMode = MeasureSpec.getMode(measureSpec);
         final int specSize = MeasureSpec.getSize(measureSpec);
 
@@ -185,7 +159,7 @@ final public class CompassMiniView extends View {
         return result;
     }
 
-    private int measureHeight(int measureSpec) {
+    private int measureHeight(final int measureSpec) {
         final int specMode = MeasureSpec.getMode(measureSpec);
         final int specSize = MeasureSpec.getSize(measureSpec);
 

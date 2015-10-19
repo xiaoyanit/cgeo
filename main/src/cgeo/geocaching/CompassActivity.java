@@ -1,113 +1,136 @@
 package cgeo.geocaching;
 
-import butterknife.InjectView;
-import butterknife.Views;
-
-import cgeo.geocaching.activity.AbstractActivity;
-import cgeo.geocaching.geopoint.Geopoint;
-import cgeo.geocaching.geopoint.Units;
+import cgeo.geocaching.activity.AbstractActionBarActivity;
+import cgeo.geocaching.activity.ShowcaseViewBuilder;
+import cgeo.geocaching.enumerations.LoadFlags;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.location.Units;
 import cgeo.geocaching.maps.CGeoMap;
+import cgeo.geocaching.sensors.GeoData;
+import cgeo.geocaching.sensors.GeoDirHandler;
+import cgeo.geocaching.sensors.GpsStatusProvider.Status;
+import cgeo.geocaching.sensors.Sensors;
+import cgeo.geocaching.settings.Settings;
 import cgeo.geocaching.speech.SpeechService;
 import cgeo.geocaching.ui.CompassView;
-import cgeo.geocaching.utils.GeoDirHandler;
+import cgeo.geocaching.ui.LoggingUI;
+import cgeo.geocaching.ui.WaypointSelectionActionProvider;
+import cgeo.geocaching.utils.AngleUtils;
+import cgeo.geocaching.utils.Formatter;
 import cgeo.geocaching.utils.Log;
 
+import com.github.amlcurran.showcaseview.targets.ActionItemTarget;
+
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.NonNull;
+import org.eclipse.jdt.annotation.Nullable;
 
 import android.content.Context;
 import android.content.Intent;
-import android.hardware.Sensor;
-import android.hardware.SensorManager;
+import android.content.res.Configuration;
+import android.media.AudioManager;
 import android.os.Bundle;
-import android.speech.tts.TextToSpeech.Engine;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.SubMenu;
 import android.view.View;
+import android.view.View.OnClickListener;
 import android.widget.TextView;
+import android.widget.ToggleButton;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
+import butterknife.Bind;
+import butterknife.ButterKnife;
+import rx.android.schedulers.AndroidSchedulers;
+import rx.functions.Action1;
 
-public class CompassActivity extends AbstractActivity {
+public class CompassActivity extends AbstractActionBarActivity {
 
-    @InjectView(R.id.nav_type) protected TextView navType;
-    @InjectView(R.id.nav_accuracy) protected TextView navAccuracy;
-    @InjectView(R.id.nav_satellites) protected TextView navSatellites;
-    @InjectView(R.id.nav_location) protected TextView navLocation;
-    @InjectView(R.id.distance) protected TextView distanceView;
-    @InjectView(R.id.heading) protected TextView headingView;
-    @InjectView(R.id.rose) protected CompassView compassView;
-    @InjectView(R.id.destination) protected TextView destinationTextView;
-    @InjectView(R.id.cacheinfo) protected TextView cacheInfoView;
+    @Bind(R.id.nav_type) protected TextView navType;
+    @Bind(R.id.nav_accuracy) protected TextView navAccuracy;
+    @Bind(R.id.nav_satellites) protected TextView navSatellites;
+    @Bind(R.id.nav_location) protected TextView navLocation;
+    @Bind(R.id.distance) protected TextView distanceView;
+    @Bind(R.id.heading) protected TextView headingView;
+    @Bind(R.id.rose) protected CompassView compassView;
+    @Bind(R.id.destination) protected TextView destinationTextView;
+    @Bind(R.id.cacheinfo) protected TextView cacheInfoView;
+    @Bind(R.id.use_compass) protected ToggleButton useCompassSwitch;
 
-    private static final String EXTRAS_COORDS = "coords";
-    private static final String EXTRAS_NAME = "name";
-    private static final String EXTRAS_GEOCODE = "geocode";
-    private static final String EXTRAS_CACHE_INFO = "cacheinfo";
-    private static final List<IWaypoint> coordinates = new ArrayList<IWaypoint>();
-    private static final int COORDINATES_OFFSET = 10;
-    private static final int REQUEST_TTS_DATA_CHECK = 1;
+    /**
+     * Destination cache, may be null
+     */
+    private Geocache cache = null;
+    /**
+     * Destination waypoint, may be null
+     */
+    private Waypoint waypoint = null;
     private Geopoint dstCoords = null;
     private float cacheHeading = 0;
-    private String title = null;
-    private String info = null;
-    private boolean hasMagneticFieldSensor;
+    private String description;
 
     @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState, R.layout.navigate);
-
-        final SensorManager sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
-        hasMagneticFieldSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD) != null;
-        if (!hasMagneticFieldSensor) {
-            Settings.setUseCompass(false);
-        }
+    public void onCreate(final Bundle savedInstanceState) {
+        onCreate(savedInstanceState, R.layout.compass_activity);
+        ButterKnife.bind(this);
 
         // get parameters
-        Bundle extras = getIntent().getExtras();
-        if (extras != null) {
-            title = extras.getString(EXTRAS_GEOCODE);
-            final String name = extras.getString(EXTRAS_NAME);
-            dstCoords = extras.getParcelable(EXTRAS_COORDS);
-            info = extras.getString(EXTRAS_CACHE_INFO);
-
-            if (StringUtils.isNotBlank(name)) {
-                if (StringUtils.isNotBlank(title)) {
-                    title += ": " + name;
-                } else {
-                    title = name;
-                }
-            }
-        } else {
-            Intent pointIntent = new Intent(this, NavigateAnyPointActivity.class);
-            startActivity(pointIntent);
-
+        final Bundle extras = getIntent().getExtras();
+        if (extras == null) {
             finish();
             return;
         }
 
-        // set header
-        setTitle();
-        setDestCoords();
-        setCacheInfo();
+        // cache must exist, except for "any point navigation"
+        final String geocode = extras.getString(Intents.EXTRA_GEOCODE);
+        if (geocode != null) {
+            cache = DataStore.loadCache(geocode, LoadFlags.LOAD_CACHE_OR_DB);
+        }
 
-        Views.inject(this);
+        // find the wanted navigation target
+        if (extras.containsKey(Intents.EXTRA_WAYPOINT_ID)) {
+            final int waypointId = extras.getInt(Intents.EXTRA_WAYPOINT_ID);
+            final Waypoint waypoint = DataStore.loadWaypoint(waypointId);
+            if (waypoint != null) {
+                setTarget(waypoint);
+            }
+        }
+        else if (extras.containsKey(Intents.EXTRA_COORDS)) {
+            setTarget(extras.<Geopoint> getParcelable(Intents.EXTRA_COORDS), extras.getString(Intents.EXTRA_COORD_DESCRIPTION));
+        }
+        else {
+            setTarget(cache);
+        }
+
+        // set activity title just once, independent of what target is switched to
+        if (cache != null) {
+            setCacheTitleBar(cache);
+        }
+        else {
+            setTitle(StringUtils.defaultIfBlank(extras.getString(Intents.EXTRA_NAME), res.getString(R.string.navigation)));
+        }
+
+        if (Sensors.getInstance().hasCompassCapabilities()) {
+            useCompassSwitch.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(final View view) {
+                    Settings.setUseCompass(((ToggleButton) view).isChecked());
+                }
+            });
+            useCompassSwitch.setVisibility(View.VISIBLE);
+        } else {
+            useCompassSwitch.setVisibility(View.GONE);
+        }
+
+        // make sure we can control the TTS volume
+        setVolumeControlStream(AudioManager.STREAM_MUSIC);
+
+        presentShowcase();
     }
 
     @Override
     public void onResume() {
-        super.onResume();
-
-        // sensor & geolocation manager
-        geoDirHandler.startGeoAndDir();
-    }
-
-    @Override
-    public void onPause() {
-        geoDirHandler.stopGeoAndDir();
-        super.onPause();
+        onResume(geoDirHandler.start(GeoDirHandler.UPDATE_GEODIR),
+                Sensors.getInstance().gpsStatusObservable().observeOn(AndroidSchedulers.mainThread()).subscribe(gpsStatusHandler));
+        forceRefresh();
     }
 
     @Override
@@ -118,103 +141,121 @@ public class CompassActivity extends AbstractActivity {
     }
 
     @Override
+    public void onConfigurationChanged(final Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+
+        setContentView(R.layout.compass_activity);
+        ButterKnife.bind(this);
+        setTarget(dstCoords, description);
+
+        forceRefresh();
+    }
+
+    private void forceRefresh() {
+        useCompassSwitch.setChecked(Settings.isUseCompass());
+        // Force a refresh of location and direction when data is available.
+        final Sensors sensors = Sensors.getInstance();
+        geoDirHandler.updateGeoDir(sensors.currentGeo(), sensors.currentDirection());
+    }
+
+    @Override
     public boolean onCreateOptionsMenu(final Menu menu) {
         getMenuInflater().inflate(R.menu.compass_activity_options, menu);
-        menu.findItem(R.id.menu_switch_compass_gps).setVisible(hasMagneticFieldSensor);
-        final SubMenu subMenu = menu.findItem(R.id.menu_select_destination).getSubMenu();
-        if (coordinates.size() > 1) {
-            for (int i = 0; i < coordinates.size(); i++) {
-                final IWaypoint coordinate = coordinates.get(i);
-                subMenu.add(0, COORDINATES_OFFSET + i, 0, coordinate.getName() + " (" + coordinate.getCoordType() + ")");
-            }
-        }
-        else {
-            menu.findItem(R.id.menu_select_destination).setVisible(false);
+        if (cache != null) {
+            LoggingUI.addMenuItems(this, menu, cache);
+            initializeTargetActionProvider(menu);
         }
         return true;
     }
 
+    private void initializeTargetActionProvider(final Menu menu) {
+        final MenuItem destinationMenu = menu.findItem(R.id.menu_select_destination);
+        WaypointSelectionActionProvider.initialize(destinationMenu, cache, new WaypointSelectionActionProvider.Callback() {
+
+            @Override
+            public void onWaypointSelected(final Waypoint waypoint) {
+                setTarget(waypoint);
+            }
+
+            @Override
+            public void onGeocacheSelected(final Geocache geocache) {
+                setTarget(geocache);
+            }
+        });
+    }
+
     @Override
-    public boolean onPrepareOptionsMenu(Menu menu) {
+    public boolean onPrepareOptionsMenu(final Menu menu) {
         super.onPrepareOptionsMenu(menu);
-        menu.findItem(R.id.menu_switch_compass_gps).setTitle(res.getString(Settings.isUseCompass() ? R.string.use_gps : R.string.use_compass));
         menu.findItem(R.id.menu_tts_start).setVisible(!SpeechService.isRunning());
         menu.findItem(R.id.menu_tts_stop).setVisible(SpeechService.isRunning());
+        menu.findItem(R.id.menu_hint).setVisible(cache != null);
         return true;
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        int id = item.getItemId();
+    public boolean onOptionsItemSelected(final MenuItem item) {
+        final int id = item.getItemId();
         switch (id) {
             case R.id.menu_map:
-                CGeoMap.startActivityCoords(this, dstCoords, null, null);
-                return true;
-            case R.id.menu_switch_compass_gps:
-                boolean oldSetting = Settings.isUseCompass();
-                Settings.setUseCompass(!oldSetting);
-                invalidateOptionsMenuCompatible();
-                if (oldSetting) {
-                    geoDirHandler.stopDir();
-                } else {
-                    geoDirHandler.startDir();
+                if (waypoint != null) {
+                    CGeoMap.startActivityCoords(this, waypoint.getCoords(), waypoint.getWaypointType(), waypoint.getName());
+                }
+                else if (cache != null) {
+                    CGeoMap.startActivityGeoCode(this, cache.getGeocode());
+                }
+                else {
+                    CGeoMap.startActivityCoords(this, dstCoords, null, null);
                 }
                 return true;
-            case R.id.menu_edit_destination:
-                Intent pointIntent = new Intent(this, NavigateAnyPointActivity.class);
-                startActivity(pointIntent);
-
-                finish();
-                return true;
             case R.id.menu_tts_start:
-                initTextToSpeech();
+                SpeechService.startService(this, dstCoords);
+                invalidateOptionsMenuCompatible();
                 return true;
             case R.id.menu_tts_stop:
                 SpeechService.stopService(this);
+                invalidateOptionsMenuCompatible();
+                return true;
+            case R.id.menu_hint:
+                cache.showHintToast(this);
                 return true;
             default:
-                int coordinatesIndex = id - COORDINATES_OFFSET;
-                if (coordinatesIndex >= 0 && coordinatesIndex < coordinates.size()) {
-                    final IWaypoint coordinate = coordinates.get(coordinatesIndex);
-                    title = coordinate.getName();
-                    dstCoords = coordinate.getCoords();
-                    setTitle();
-                    setDestCoords();
-                    setCacheInfo();
-                    updateDistanceInfo(app.currentGeo());
-
-                    Log.d("destination set: " + title + " (" + dstCoords + ")");
+                if (LoggingUI.onMenuItemSelected(item, this, cache)) {
                     return true;
                 }
         }
-        return false;
-    }
-
-    private void initTextToSpeech() {
-        Intent intent = new Intent(Engine.ACTION_CHECK_TTS_DATA);
-        startActivityForResult(intent, REQUEST_TTS_DATA_CHECK);
+        return super.onOptionsItemSelected(item);
     }
 
     @Override
-    protected void onActivityResult(int request, int result, Intent data) {
-        if (request == REQUEST_TTS_DATA_CHECK && result == Engine.CHECK_VOICE_DATA_PASS) {
-            SpeechService.startService(this, dstCoords);
-        }
-        else {
-            Log.i("TTS failed to start. Request: " + request + " result: " + result);
-            startActivity(new Intent(Engine.ACTION_INSTALL_TTS_DATA));
+    public ShowcaseViewBuilder getShowcase() {
+        return new ShowcaseViewBuilder(this)
+                .setTarget(new ActionItemTarget(this, R.id.menu_hint))
+                .setContent(R.string.showcase_compass_hint_title, R.string.showcase_compass_hint_text);
+    }
+
+    private void setTarget(@NonNull final Geopoint coords, final String newDescription) {
+        setDestCoords(coords);
+        setTargetDescription(newDescription);
+        updateDistanceInfo(Sensors.getInstance().currentGeo());
+
+        Log.d("destination set: " + newDescription + " (" + dstCoords + ")");
+    }
+
+    private void setTarget(final @NonNull Waypoint waypointIn) {
+        waypoint = waypointIn;
+        final Geopoint coordinates = waypointIn.getCoords();
+        if (coordinates != null) { // handled by WaypointSelectionActionProvider, but the compiler doesn't know
+            setTarget(coordinates, waypointIn.getName());
         }
     }
 
-    private void setTitle() {
-        if (StringUtils.isNotBlank(title)) {
-            setTitle(title);
-        } else {
-            setTitle(res.getString(R.string.navigation));
-        }
+    private void setTarget(final Geocache cache) {
+        setTarget(cache.getCoords(), Formatter.formatCacheInfoShort(cache));
     }
 
-    private void setDestCoords() {
+    private void setDestCoords(final Geopoint coords) {
+        dstCoords = coords;
         if (dstCoords == null) {
             return;
         }
@@ -222,17 +263,18 @@ public class CompassActivity extends AbstractActivity {
         destinationTextView.setText(dstCoords.toString());
     }
 
-    private void setCacheInfo() {
-        if (info == null) {
+    private void setTargetDescription(final @Nullable String newDescription) {
+        description = newDescription;
+        if (description == null) {
             cacheInfoView.setVisibility(View.GONE);
             return;
         }
         cacheInfoView.setVisibility(View.VISIBLE);
-        cacheInfoView.setText(info);
+        cacheInfoView.setText(description);
     }
 
-    private void updateDistanceInfo(final IGeoData geo) {
-        if (geo.getCoords() == null || dstCoords == null) {
+    private void updateDistanceInfo(final GeoData geo) {
+        if (dstCoords == null) {
             return;
         }
 
@@ -241,51 +283,36 @@ public class CompassActivity extends AbstractActivity {
         headingView.setText(Math.round(cacheHeading) + "°");
     }
 
-    private GeoDirHandler geoDirHandler = new GeoDirHandler() {
+    private final Action1<Status> gpsStatusHandler = new Action1<Status>() {
         @Override
-        public void updateGeoData(final IGeoData geo) {
-            try {
-                if (geo.getCoords() != null) {
-                    if (geo.getSatellitesVisible() >= 0) {
-                        navSatellites.setText(res.getString(R.string.loc_sat) + ": " + geo.getSatellitesFixed() + "/" + geo.getSatellitesVisible());
-                    }
-                    else {
-                        navSatellites.setText("");
-                    }
-                    navType.setText(res.getString(geo.getLocationProvider().resourceId));
-
-                    if (geo.getAccuracy() >= 0) {
-                        navAccuracy.setText("±" + Units.getDistanceFromMeters(geo.getAccuracy()));
-                    } else {
-                        navAccuracy.setText(null);
-                    }
-
-                    if (geo.getAltitude() != 0.0f) {
-                        final String humanAlt = Units.getDistanceFromMeters((float) geo.getAltitude());
-                        navLocation.setText(geo.getCoords() + " | " + humanAlt);
-                    } else {
-                        navLocation.setText(geo.getCoords().toString());
-                    }
-
-                    updateDistanceInfo(geo);
-                } else {
-                    navType.setText(null);
-                    navAccuracy.setText(null);
-                    navLocation.setText(res.getString(R.string.loc_trying));
-                }
-
-                if (!Settings.isUseCompass() || geo.getSpeed() > 5) { // use GPS when speed is higher than 18 km/h
-                    updateNorthHeading(geo.getBearing());
-                }
-            } catch (Exception e) {
-                Log.w("Failed to LocationUpdater location.");
+        public void call(final Status gpsStatus) {
+            if (gpsStatus.satellitesVisible >= 0) {
+                navSatellites.setText(res.getString(R.string.loc_sat) + ": " + gpsStatus.satellitesFixed + "/" + gpsStatus.satellitesVisible);
+            } else {
+                navSatellites.setText("");
             }
         }
+    };
 
+    private final GeoDirHandler geoDirHandler = new GeoDirHandler() {
         @Override
-        public void updateDirection(final float direction) {
-            if (app.currentGeo().getSpeed() <= 5) { // use compass when speed is lower than 18 km/h
-                updateNorthHeading(DirectionProvider.getDirectionNow(CompassActivity.this, direction));
+        public void updateGeoDir(final GeoData geo, final float dir) {
+            try {
+                navType.setText(res.getString(geo.getLocationProvider().resourceId));
+
+                if (geo.getAccuracy() >= 0) {
+                    navAccuracy.setText("±" + Units.getDistanceFromMeters(geo.getAccuracy()));
+                } else {
+                    navAccuracy.setText(null);
+                }
+
+                navLocation.setText(geo.getCoords().toString());
+
+                updateDistanceInfo(geo);
+
+                updateNorthHeading(AngleUtils.getDirectionNow(dir));
+            } catch (final RuntimeException e) {
+                Log.w("Failed to update location", e);
             }
         }
     };
@@ -296,29 +323,24 @@ public class CompassActivity extends AbstractActivity {
         }
     }
 
-    public static void startActivity(final Context context, final String geocode, final String displayedName, final Geopoint coords, final Collection<IWaypoint> coordinatesWithType,
-            final String info) {
-        coordinates.clear();
-        if (coordinatesWithType != null) {
-            for (IWaypoint coordinate : coordinatesWithType) {
-                if (coordinate != null) {
-                    coordinates.add(coordinate);
-                }
-            }
-        }
-
+    public static void startActivityWaypoint(final Context context, final Waypoint waypoint) {
         final Intent navigateIntent = new Intent(context, CompassActivity.class);
-        navigateIntent.putExtra(EXTRAS_COORDS, coords);
-        navigateIntent.putExtra(EXTRAS_GEOCODE, geocode);
-        if (null != displayedName) {
-            navigateIntent.putExtra(EXTRAS_NAME, displayedName);
-        }
-        navigateIntent.putExtra(EXTRAS_CACHE_INFO, info);
+        navigateIntent.putExtra(Intents.EXTRA_GEOCODE, waypoint.getGeocode());
+        navigateIntent.putExtra(Intents.EXTRA_WAYPOINT_ID, waypoint.getId());
         context.startActivity(navigateIntent);
     }
 
-    public static void startActivity(final Context context, final String geocode, final String displayedName, final Geopoint coords, final Collection<IWaypoint> coordinatesWithType) {
-        CompassActivity.startActivity(context, geocode, displayedName, coords, coordinatesWithType, null);
+    public static void startActivityPoint(final Context context, final Geopoint coords, final String displayedName) {
+        final Intent navigateIntent = new Intent(context, CompassActivity.class);
+        navigateIntent.putExtra(Intents.EXTRA_COORDS, coords);
+        navigateIntent.putExtra(Intents.EXTRA_NAME, displayedName);
+        context.startActivity(navigateIntent);
+    }
+
+    public static void startActivityCache(final Context context, final Geocache cache) {
+        final Intent navigateIntent = new Intent(context, CompassActivity.class);
+        navigateIntent.putExtra(Intents.EXTRA_GEOCODE, cache.getGeocode());
+        context.startActivity(navigateIntent);
     }
 
 }

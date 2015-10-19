@@ -1,6 +1,7 @@
 package cgeo.geocaching.activity;
 
 import cgeo.geocaching.ui.dialog.CustomProgressDialog;
+import cgeo.geocaching.utils.Log;
 
 import android.app.ProgressDialog;
 import android.content.Context;
@@ -16,9 +17,9 @@ public class Progress {
     private ProgressDialog dialog;
     private int progress = 0;
     private int progressDivider = 1;
-    private boolean hideAbsolute = false;
+    final private boolean hideAbsolute;
 
-    public Progress(boolean hideAbsolute) {
+    public Progress(final boolean hideAbsolute) {
         this.hideAbsolute = hideAbsolute;
     }
 
@@ -27,14 +28,18 @@ public class Progress {
     }
 
     public synchronized void dismiss() {
-        if (dialog != null && dialog.isShowing()) {
-            dialog.dismiss();
+        if (isShowing()) {
+            try {
+                dialog.dismiss();
+            } catch (final Exception e) {
+                Log.e("Progress.dismiss", e);
+            }
         }
         dialog = null;
     }
 
     public synchronized void show(final Context context, final String title, final String message, final boolean indeterminate, final Message cancelMessage) {
-        if (dialog == null) {
+        if (!isShowing()) {
             createProgressDialog(context, title, message, cancelMessage);
             dialog.setIndeterminate(indeterminate);
             dialog.show();
@@ -42,20 +47,15 @@ public class Progress {
     }
 
     public synchronized void show(final Context context, final String title, final String message, final int style, final Message cancelMessage) {
-        if (dialog == null) {
+        if (!isShowing()) {
             createProgressDialog(context, title, message, cancelMessage);
             dialog.setProgressStyle(style);
             dialog.show();
         }
     }
 
-    private void createProgressDialog(Context context, String title, String message, Message cancelMessage) {
-        if (hideAbsolute) {
-            dialog = new CustomProgressDialog(context);
-        }
-        else {
-            dialog = new ProgressDialog(context);
-        }
+    private void createProgressDialog(final Context context, final String title, final String message, final Message cancelMessage) {
+        dialog = hideAbsolute ? new CustomProgressDialog(context) : new ProgressDialog(context);
         dialog.setTitle(title);
         dialog.setMessage(message);
         if (cancelMessage != null) {
@@ -82,7 +82,7 @@ public class Progress {
     }
 
     public synchronized void setMaxProgressAndReset(final int max) {
-        if (dialog != null && dialog.isShowing()) {
+        if (isShowing()) {
             final int modMax = max / this.progressDivider;
             dialog.setMax(modMax);
             dialog.setProgress(0);
@@ -92,7 +92,7 @@ public class Progress {
 
     public synchronized void setProgress(final int progress) {
         final int modProgress = progress / this.progressDivider;
-        if (dialog != null && dialog.isShowing()) {
+        if (isShowing()) {
             dialog.setProgress(modProgress);
         }
         this.progress = modProgress;

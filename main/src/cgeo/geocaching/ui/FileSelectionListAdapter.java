@@ -1,5 +1,7 @@
 package cgeo.geocaching.ui;
 
+import butterknife.Bind;
+
 import cgeo.geocaching.R;
 import cgeo.geocaching.files.IFileSelectionView;
 import cgeo.geocaching.utils.Log;
@@ -17,44 +19,36 @@ import java.util.List;
 
 public class FileSelectionListAdapter extends ArrayAdapter<File> {
 
-    private IFileSelectionView parentView;
-    private LayoutInflater inflater;
+    private final IFileSelectionView parentView;
+    private final LayoutInflater inflater;
 
-    public FileSelectionListAdapter(IFileSelectionView parentIn, List<File> listIn) {
+    public FileSelectionListAdapter(final IFileSelectionView parentIn, final List<File> listIn) {
         super(parentIn.getContext(), 0, listIn);
 
         parentView = parentIn;
+        inflater = ((Activity) getContext()).getLayoutInflater();
     }
 
     @Override
     public View getView(final int position, final View rowView, final ViewGroup parent) {
-        if (inflater == null) {
-            inflater = ((Activity) getContext()).getLayoutInflater();
-        }
-
         if (position > getCount()) {
-            Log.w("cgGPXListAdapter.getView: Attempt to access missing item #" + position);
+            Log.w("FileSelectionListAdapter.getView: Attempt to access missing item #" + position);
             return null;
         }
 
-        File file = getItem(position);
+        final File file = getItem(position);
 
         View v = rowView;
 
-        ViewHolder holder;
+        final ViewHolder holder;
         if (v == null) {
-            v = inflater.inflate(R.layout.mapfile_item, null);
-
-            holder = new ViewHolder();
-            holder.filepath = (TextView) v.findViewById(R.id.mapfilepath);
-            holder.filename = (TextView) v.findViewById(R.id.mapfilename);
-
-            v.setTag(holder);
+            v = inflater.inflate(R.layout.mapfile_item, parent, false);
+            holder = new ViewHolder(v);
         } else {
             holder = (ViewHolder) v.getTag();
         }
 
-        String currentFile = parentView.getCurrentFile();
+        final String currentFile = parentView.getCurrentFile();
         if (currentFile != null && file.equals(new File(currentFile))) {
             holder.filename.setTypeface(holder.filename.getTypeface(), Typeface.BOLD);
         } else {
@@ -73,20 +67,24 @@ public class FileSelectionListAdapter extends ArrayAdapter<File> {
     private class TouchListener implements View.OnClickListener {
         private File file = null;
 
-        public TouchListener(File fileIn) {
+        public TouchListener(final File fileIn) {
             file = fileIn;
         }
 
         // tap on item
         @Override
-        public void onClick(View view) {
+        public void onClick(final View view) {
             parentView.setCurrentFile(file.toString());
             parentView.close();
         }
     }
 
-    private static final class ViewHolder {
-        TextView filepath;
-        TextView filename;
+    protected static final class ViewHolder extends AbstractViewHolder {
+        @Bind(R.id.mapfilepath) protected TextView filepath;
+        @Bind(R.id.mapfilename) protected TextView filename;
+
+        public ViewHolder(final View view) {
+            super(view);
+        }
     }
 }

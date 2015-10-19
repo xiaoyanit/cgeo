@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/live_map_scroll"
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
     android:orientation="vertical"
-    android:padding="4dip" >
+    android:padding="4dip"
+    tools:context=".ui.dialog.LiveMapInfoDialogBuilder" >
 
     <LinearLayout
         android:layout_width="fill_parent"
@@ -18,14 +20,6 @@
             android:text="@string/live_map_notification"
             android:textColor="?text_color"
             android:textSize="14sp" />
-
-        <CheckBox
-            android:id="@+id/live_map_hint_hide"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="left"
-            android:text="@string/live_map_note_dontshow"
-            android:visibility="gone" />
     </LinearLayout>
 
 </ScrollView>

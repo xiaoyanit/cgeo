@@ -1,17 +1,18 @@
 package cgeo.geocaching.test.mock;
 
-import cgeo.geocaching.connector.gc.Login;
+import cgeo.geocaching.connector.gc.GCLogin;
 import cgeo.geocaching.enumerations.CacheSize;
 import cgeo.geocaching.enumerations.CacheType;
 import cgeo.geocaching.enumerations.LogType;
-import cgeo.geocaching.geopoint.Geopoint;
+import cgeo.geocaching.location.Geopoint;
+
+import org.eclipse.jdt.annotation.NonNull;
 
 import java.text.ParseException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 
 public class GC1ZXX2 extends MockedCache {
 
@@ -29,6 +30,7 @@ public class GC1ZXX2 extends MockedCache {
         return 3.0f;
     }
 
+    @NonNull
     @Override
     public String getGeocode() {
         return "GC1ZXX2";
@@ -39,6 +41,7 @@ public class GC1ZXX2 extends MockedCache {
         return "Rich Uncle Pennybags";
     }
 
+    @NonNull
     @Override
     public CacheSize getSize() {
         return CacheSize.OTHER;
@@ -59,6 +62,7 @@ public class GC1ZXX2 extends MockedCache {
         return true;
     }
 
+    @NonNull
     @Override
     public String getOwnerUserId() {
         return "daniel354";
@@ -87,13 +91,14 @@ public class GC1ZXX2 extends MockedCache {
     @Override
     public Date getHiddenDate() {
         try {
-            return Login.parseGcCustomDate("16/10/2009", getDateFormat());
+            return GCLogin.parseGcCustomDate("2009-10-16", getDateFormat());
         } catch (ParseException e) {
             // intentionally left blank
         }
         return null;
     }
 
+    @NonNull
     @Override
     public List<String> getAttributes() {
         final String[] attributes = new String[] {
@@ -107,7 +112,6 @@ public class GC1ZXX2 extends MockedCache {
         };
         return new MockedLazyInitializedList<String>(attributes);
     }
-
 
     @Override
     public Map<LogType, Integer> getLogCounts() {

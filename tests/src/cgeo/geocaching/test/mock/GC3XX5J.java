@@ -1,17 +1,19 @@
 package cgeo.geocaching.test.mock;
 
-import cgeo.geocaching.connector.gc.Login;
+import cgeo.geocaching.connector.gc.GCLogin;
 import cgeo.geocaching.enumerations.CacheSize;
 import cgeo.geocaching.enumerations.CacheType;
 import cgeo.geocaching.enumerations.LogType;
-import cgeo.geocaching.geopoint.Geopoint;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.settings.Settings;
+
+import org.eclipse.jdt.annotation.NonNull;
 
 import java.text.ParseException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 
 public class GC3XX5J extends MockedCache {
 
@@ -29,6 +31,7 @@ public class GC3XX5J extends MockedCache {
         return 1.5f;
     }
 
+    @NonNull
     @Override
     public String getGeocode() {
         return "GC3XX5J";
@@ -39,6 +42,7 @@ public class GC3XX5J extends MockedCache {
         return "David & Ajda";
     }
 
+    @NonNull
     @Override
     public CacheSize getSize() {
         return CacheSize.SMALL;
@@ -56,9 +60,11 @@ public class GC3XX5J extends MockedCache {
 
     @Override
     public boolean isArchived() {
-        return false;
+        // The cache has been archived since 2015-01-13.
+        return true;
     }
 
+    @NonNull
     @Override
     public String getOwnerUserId() {
         return "David & Ajda";
@@ -87,13 +93,14 @@ public class GC3XX5J extends MockedCache {
     @Override
     public Date getHiddenDate() {
         try {
-            return Login.parseGcCustomDate("2012-10-01", getDateFormat());
+            return GCLogin.parseGcCustomDate("2012-10-01", "yyyy-MM-dd");
         } catch (ParseException e) {
             // intentionally left blank
         }
         return null;
     }
 
+    @NonNull
     @Override
     public List<String> getAttributes() {
         final String[] attributes = new String[] {
@@ -110,7 +117,6 @@ public class GC3XX5J extends MockedCache {
         };
         return new MockedLazyInitializedList<String>(attributes);
     }
-
 
     @Override
     public Map<LogType, Integer> getLogCounts() {
@@ -137,8 +143,8 @@ public class GC3XX5J extends MockedCache {
     }
 
     @Override
-    public String getPersonalNote() {
-        return super.getPersonalNote();
+    public boolean isFound() {
+        return Settings.getUsername().equals("mucek4");
     }
 
 }

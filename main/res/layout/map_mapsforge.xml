@@ -1,17 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
-    android:orientation="vertical" >
+    android:orientation="vertical"
+    tools:context=".maps.mapsforge.MapsforgeMapProvider" >
 
-    <LinearLayout style="@style/action_bar" >
-
-        <include layout="@layout/actionbar_title" />
-
-        <include layout="@layout/actionbar_progress" />
-
-        <include layout="@layout/actionbar_button_myposition" />
-    </LinearLayout>
+    <include layout="@layout/actionbar_maps" />
 
     <include layout="@layout/filter_bar" />
 

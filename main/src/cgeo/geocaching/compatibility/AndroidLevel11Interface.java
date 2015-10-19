@@ -1,8 +1,9 @@
 package cgeo.geocaching.compatibility;
 
-import android.app.Activity;
+import android.widget.TextView;
 
 public interface AndroidLevel11Interface {
-    public void invalidateOptionsMenu(final Activity activity);
+
+    void setTextIsSelectable(TextView textView, boolean selectable);
 
 }

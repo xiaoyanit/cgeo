@@ -1,40 +1,58 @@
 package cgeo.geocaching.files;
 
-import cgeo.geocaching.cgeoapplication;
+import cgeo.geocaching.CgeoApplication;
 import cgeo.geocaching.utils.CryptUtils;
-import cgeo.geocaching.utils.IOUtils;
+import cgeo.geocaching.utils.EnvironmentUtils;
+import cgeo.geocaching.utils.FileUtils;
 import cgeo.geocaching.utils.Log;
 
 import ch.boye.httpclientandroidlib.Header;
 import ch.boye.httpclientandroidlib.HttpResponse;
 
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.CharEncoding;
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.NonNull;
+import org.eclipse.jdt.annotation.Nullable;
 
 import android.os.Environment;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.Reader;
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Handle local storage issues on phone and SD card.
  *
  */
-public class LocalStorage {
+public final class LocalStorage {
+
+    private static final String FILE_SYSTEM_TABLE_PATH = "/system/etc/vold.fstab";
+    public static final String HEADER_LAST_MODIFIED = "last-modified";
+    public static final String HEADER_ETAG = "etag";
 
     /** Name of the local private directory used to hold cached information */
-    public final static String cache = ".cgeo";
+    public final static String CACHE_DIRNAME = ".cgeo";
 
     private static File internalStorageBase;
+
+    private LocalStorage() {
+        // utility class
+    }
 
     /**
      * Return the primary storage cache root (external media if mounted, phone otherwise).
@@ -54,10 +72,10 @@ public class LocalStorage {
         return getStorageSpecific(true);
     }
 
-    private static File getStorageSpecific(boolean secondary) {
-        return Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED) ^ secondary ?
+    private static File getStorageSpecific(final boolean secondary) {
+        return EnvironmentUtils.isExternalStorageAvailable() ^ secondary ?
                 getExternalStorageBase() :
-                new File(getInternalStorageBase(), LocalStorage.cache);
+                new File(getInternalStorageBase(), CACHE_DIRNAME);
     }
 
     public static File getExternalDbDirectory() {
@@ -69,13 +87,13 @@ public class LocalStorage {
     }
 
     private static File getExternalStorageBase() {
-        return new File(Environment.getExternalStorageDirectory(), LocalStorage.cache);
+        return new File(Environment.getExternalStorageDirectory(), CACHE_DIRNAME);
     }
 
     private static File getInternalStorageBase() {
         if (internalStorageBase == null) {
             // A race condition will do no harm as the operation is idempotent. No need to synchronize.
-            internalStorageBase = cgeoapplication.getInstance().getApplicationContext().getFilesDir().getParentFile();
+            internalStorageBase = CgeoApplication.getInstance().getApplicationContext().getFilesDir().getParentFile();
         }
         return internalStorageBase;
     }
@@ -88,7 +106,14 @@ public class LocalStorage {
      * @return the file extension, including the leading dot, or the empty string if none could be determined
      */
     static String getExtension(final String url) {
-        final String urlExt = StringUtils.substringAfterLast(url, ".");
+        final String urlExt;
+        if (url.startsWith("data:")) {
+            // "data:image/png;base64,i53…" -> ".png"
+            urlExt = StringUtils.substringAfter(StringUtils.substringBefore(url, ";"), "/");
+        } else {
+            // "http://example.com/foo/bar.png" -> ".png"
+            urlExt = StringUtils.substringAfterLast(url, ".");
+        }
         return urlExt.length() >= 1 && urlExt.length() <= 4 ? "." + urlExt : "";
     }
 
@@ -100,7 +125,7 @@ public class LocalStorage {
      *            the geocode
      * @return the cache directory
      */
-    public static File getStorageDir(final String geocode) {
+    public static File getStorageDir(@NonNull final String geocode) {
         return storageDir(getStorage(), geocode);
     }
 
@@ -112,12 +137,12 @@ public class LocalStorage {
      *            the geocode
      * @return the cache directory
      */
-    private static File getStorageSecDir(final String geocode) {
+    private static File getStorageSecDir(@NonNull final String geocode) {
         return storageDir(getStorageSec(), geocode);
     }
 
-    private static File storageDir(final File base, final String geocode) {
-        return new File(base, StringUtils.defaultIfEmpty(geocode, "_others"));
+    private static File storageDir(final File base, @NonNull final String geocode) {
+        return new File(base, geocode);
     }
 
     /**
@@ -133,7 +158,7 @@ public class LocalStorage {
      *            true if an url was given, false if a file name was given
      * @return the file
      */
-    public static File getStorageFile(final String geocode, final String fileNameOrUrl, final boolean isUrl, final boolean createDirs) {
+    public static File getStorageFile(@NonNull final String geocode, final String fileNameOrUrl, final boolean isUrl, final boolean createDirs) {
         return buildFile(getStorageDir(geocode), fileNameOrUrl, isUrl, createDirs);
     }
 
@@ -156,7 +181,7 @@ public class LocalStorage {
 
     private static File buildFile(final File base, final String fileName, final boolean isUrl, final boolean createDirs) {
         if (createDirs) {
-            base.mkdirs();
+            FileUtils.mkdirs(base);
         }
         return new File(base, isUrl ? CryptUtils.md5(fileName) + getExtension(fileName) : fileName);
     }
@@ -177,23 +202,29 @@ public class LocalStorage {
 
         try {
             final boolean saved = saveToFile(response.getEntity().getContent(), targetFile);
-            saveHeader("etag", saved ? response : null, targetFile);
-            saveHeader("last-modified", saved ? response : null, targetFile);
+            saveHeader(HEADER_ETAG, saved ? response : null, targetFile);
+            saveHeader(HEADER_LAST_MODIFIED, saved ? response : null, targetFile);
             return saved;
-        } catch (IOException e) {
+        } catch (final IOException e) {
             Log.e("LocalStorage.saveEntityToFile", e);
         }
 
         return false;
     }
 
-    private static void saveHeader(final String name, final HttpResponse response, final File baseFile) {
+    private static void saveHeader(final String name, @Nullable final HttpResponse response, final File baseFile) {
         final Header header = response != null ? response.getFirstHeader(name) : null;
         final File file = filenameForHeader(baseFile, name);
         if (header == null) {
-            file.delete();
+            FileUtils.deleteIgnoringFailure(file);
         } else {
-            saveToFile(new ByteArrayInputStream(header.getValue().getBytes()), file);
+            try {
+                saveToFile(new ByteArrayInputStream(header.getValue().getBytes("UTF-8")), file);
+            } catch (final UnsupportedEncodingException e) {
+                // Do not try to display the header in the log message, as our default encoding is
+                // likely to be UTF-8 and it will fail as well.
+                Log.e("LocalStorage.saveHeader: unable to decode header", e);
+            }
         }
     }
 
@@ -208,21 +239,22 @@ public class LocalStorage {
      *            the name of the cached resource
      * @param name
      *            the name of the header ("etag" or "last-modified")
-     * @return null if no value has been cached, the value otherwise
+     * @return the cached value, or <tt>null</tt> if none has been cached
      */
+    @Nullable
     public static String getSavedHeader(final File baseFile, final String name) {
         try {
             final File file = filenameForHeader(baseFile, name);
-            final FileReader f = new FileReader(file);
+            final Reader reader = new InputStreamReader(new FileInputStream(file), CharEncoding.UTF_8);
             try {
                 // No header will be more than 256 bytes
                 final char[] value = new char[256];
-                final int count = f.read(value);
+                final int count = reader.read(value);
                 return new String(value, 0, count);
             } finally {
-                f.close();
+                reader.close();
             }
-        } catch (final FileNotFoundException e) {
+        } catch (final FileNotFoundException ignored) {
             // Do nothing, the file does not exist
         } catch (final Exception e) {
             Log.w("could not read saved header " + name + " for " + baseFile, e);
@@ -247,21 +279,24 @@ public class LocalStorage {
             return false;
         }
 
+
         try {
             try {
-                final FileOutputStream fos = new FileOutputStream(targetFile);
+                final File tempFile = File.createTempFile("download", null, targetFile.getParentFile());
+                final FileOutputStream fos = new FileOutputStream(tempFile);
                 final boolean written = copy(inputStream, fos);
                 fos.close();
-                if (!written) {
-                    targetFile.delete();
+                if (written) {
+                    return tempFile.renameTo(targetFile);
                 }
-                return written;
+                FileUtils.deleteIgnoringFailure(tempFile);
+                return false;
             } finally {
-                inputStream.close();
+                IOUtils.closeQuietly(inputStream);
             }
-        } catch (IOException e) {
+        } catch (final IOException e) {
             Log.e("LocalStorage.saveToFile", e);
-            targetFile.delete();
+            FileUtils.deleteIgnoringFailure(targetFile);
         }
         return false;
     }
@@ -276,34 +311,35 @@ public class LocalStorage {
      * @return true if the copy happened without error, false otherwise
      */
     public static boolean copy(final File source, final File destination) {
-        destination.getParentFile().mkdirs();
+        FileUtils.mkdirs(destination.getParentFile());
 
         InputStream input = null;
         OutputStream output = null;
+        boolean copyDone = false;
+
         try {
             input = new BufferedInputStream(new FileInputStream(source));
             output = new BufferedOutputStream(new FileOutputStream(destination));
-        } catch (FileNotFoundException e) {
-            Log.e("LocalStorage.copy: could not open file", e);
-            IOUtils.closeQuietly(input);
-            IOUtils.closeQuietly(output);
-            return false;
-        }
-
-        boolean copyDone = copy(input, output);
-
-        try {
+            copyDone = copy(input, output);
+            // close here already to catch any issue with closing
             input.close();
             output.close();
-        } catch (IOException e) {
-            Log.e("LocalStorage.copy: could not close file", e);
+        } catch (final FileNotFoundException e) {
+            Log.e("LocalStorage.copy: could not copy file", e);
             return false;
+        } catch (final IOException e) {
+            Log.e("LocalStorage.copy: could not copy file", e);
+            return false;
+        } finally {
+            // close here quietly to clean up in all situations
+            IOUtils.closeQuietly(input);
+            IOUtils.closeQuietly(output);
         }
 
         return copyDone;
     }
 
-    private static boolean copy(final InputStream input, final OutputStream output) {
+    public static boolean copy(final InputStream input, final OutputStream output) {
         try {
             int length;
             final byte[] buffer = new byte[4096];
@@ -312,7 +348,7 @@ public class LocalStorage {
             }
             // Flushing is only necessary if the stream is not immediately closed afterwards.
             // We rely on all callers to do that correctly outside of this method
-        } catch (IOException e) {
+        } catch (final IOException e) {
             Log.e("LocalStorage.copy: error when copying data", e);
             return false;
         }
@@ -326,21 +362,7 @@ public class LocalStorage {
      * @return true if the external media is properly mounted
      */
     public static boolean isExternalStorageAvailable() {
-        return Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED);
-    }
-
-    public static boolean deleteDirectory(File path) {
-        if (path.exists()) {
-            for (final File file : path.listFiles()) {
-                if (file.isDirectory()) {
-                    deleteDirectory(file);
-                } else {
-                    file.delete();
-                }
-            }
-        }
-
-        return path.delete();
+        return EnvironmentUtils.isExternalStorageAvailable();
     }
 
     /**
@@ -358,10 +380,10 @@ public class LocalStorage {
         }
         for (final File file : filesToDelete) {
             try {
-                if (!file.delete()) {
+                if (!FileUtils.delete(file)) {
                     Log.w("LocalStorage.deleteFilesPrefix: Can't delete file " + file.getName());
                 }
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 Log.e("LocalStorage.deleteFilesPrefix", e);
             }
         }
@@ -380,10 +402,53 @@ public class LocalStorage {
     public static File[] getFilesWithPrefix(final String geocode, final String filenamePrefix) {
         final FilenameFilter filter = new FilenameFilter() {
             @Override
-            public boolean accept(File dir, String filename) {
+            public boolean accept(final File dir, final String filename) {
                 return filename.startsWith(filenamePrefix);
             }
         };
-        return LocalStorage.getStorageDir(geocode).listFiles(filter);
+        return getStorageDir(geocode).listFiles(filter);
+    }
+
+    /**
+     * Get all storages available on the device.
+     * Will include paths like /mnt/sdcard /mnt/usbdisk /mnt/ext_card /mnt/sdcard/ext_card
+     */
+    public static List<File> getStorages() {
+
+        final String extStorage = Environment.getExternalStorageDirectory().getAbsolutePath();
+        final List<File> storages = new ArrayList<>();
+        storages.add(new File(extStorage));
+        final File file = new File(FILE_SYSTEM_TABLE_PATH);
+        if (file.canRead()) {
+            Reader fr = null;
+            BufferedReader br = null;
+            try {
+                fr = new InputStreamReader(new FileInputStream(file), CharEncoding.UTF_8);
+                br = new BufferedReader(fr);
+                String str = br.readLine();
+                while (str != null) {
+                    if (str.startsWith("dev_mount")) {
+                        final String[] tokens = StringUtils.split(str);
+                        if (tokens.length >= 3) {
+                            final String path = tokens[2]; // mountpoint
+                            if (!extStorage.equals(path)) {
+                                final File directory = new File(path);
+                                if (directory.exists() && directory.isDirectory()) {
+                                    storages.add(directory);
+                                }
+                            }
+                        }
+                    }
+                    str = br.readLine();
+                }
+            } catch (final IOException e) {
+                Log.e("Could not get additional mount points for user content. " +
+                        "Proceeding with external storage only (" + extStorage + ")", e);
+            } finally {
+                IOUtils.closeQuietly(fr);
+                IOUtils.closeQuietly(br);
+            }
+        }
+        return storages;
     }
 }

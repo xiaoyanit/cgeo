@@ -1,127 +1,95 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <?p2f version='1.0.0'?>
 <p2f version='1.0.0'>
-  <ius size='22'>
-    <iu id='com.android.ide.eclipse.ddms.feature.group' name='Android DDMS' version='22.0.1.v201305230001--685705'>
+  <ius size='18'>
+    <iu id='com.android.ide.eclipse.ddms.feature.feature.group' name='Android DDMS' version='23.0.4.1468518'>
       <repositories size='1'>
-        <repository location='https://dl-ssl.google.com/android/eclipse'/>
+        <repository location='https://dl-ssl.google.com/android/eclipse/'/>
       </repositories>
     </iu>
-    <iu id='com.android.ide.eclipse.adt.feature.group' name='Android Development Tools' version='22.0.1.v201305230001--685705'>
+    <iu id='com.android.ide.eclipse.adt.feature.feature.group' name='Android Development Tools' version='23.0.4.1468518'>
       <repositories size='1'>
-        <repository location='https://dl-ssl.google.com/android/eclipse'/>
+        <repository location='https://dl-ssl.google.com/android/eclipse/'/>
       </repositories>
     </iu>
-    <iu id='com.android.ide.eclipse.hierarchyviewer.feature.group' name='Android Hierarchy Viewer' version='22.0.1.v201305230001--685705'>
+    <iu id='com.android.ide.eclipse.hierarchyviewer.feature.feature.group' name='Android Hierarchy Viewer' version='23.0.4.1468518'>
       <repositories size='1'>
-        <repository location='https://dl-ssl.google.com/android/eclipse'/>
+        <repository location='https://dl-ssl.google.com/android/eclipse/'/>
       </repositories>
     </iu>
-    <iu id='com.android.ide.eclipse.traceview.feature.group' name='Android Traceview' version='22.0.1.v201305230001--685705'>
+    <iu id='com.android.ide.eclipse.traceview.feature.feature.group' name='Android Traceview' version='23.0.4.1468518'>
       <repositories size='1'>
-        <repository location='https://dl-ssl.google.com/android/eclipse'/>
+        <repository location='https://dl-ssl.google.com/android/eclipse/'/>
       </repositories>
     </iu>
-    <iu id='com.instantiations.assist.eclipse.audit.feature.group' name='CodePro - Audit' version='7.1.0.r37x201109091206'>
+    <iu id='org.eclipse.recommenders.mylyn.rcp.feature.feature.group' name='Code Recommenders Mylyn Integration' version='2.1.9.v20140917-1240'>
       <repositories size='1'>
-        <repository location='http://dl.google.com/eclipse/inst/codepro/latest/3.7'/>
+        <repository location='http://download.eclipse.org/releases/luna'/>
       </repositories>
     </iu>
-    <iu id='com.instantiations.eclipse.analysis.appanalysis.feature.feature.group' name='CodePro - Similar Code Analysis' version='7.1.0.r37x201109091143'>
+    <iu id='org.eclipse.recommenders.snipmatch.rcp.feature.feature.group' name='Code Recommenders Snipmatch' version='2.1.9.v20140917-1240'>
       <repositories size='1'>
-        <repository location='http://dl.google.com/eclipse/inst/codepro/latest/3.7'/>
+        <repository location='http://download.eclipse.org/releases/luna'/>
       </repositories>
     </iu>
-    <iu id='org.eclipse.mylyn.github.feature.feature.group' name='Eclipse EGit Mylyn GitHub Feature' version='2.2.0.201212191850-r'>
-      <repositories size='3'>
+    <iu id='org.eclipse.mylyn.github.feature.feature.group' name='Eclipse GitHub integration with task focused interface' version='3.5.0.201409260305-r'>
+      <repositories size='1'>
         <repository location='http://download.eclipse.org/egit/github/updates'/>
-        <repository location='http://download.eclipse.org/releases/juno'/>
-        <repository location='http://marketplace.eclipse.org/repo/'/>
       </repositories>
     </iu>
-    <iu id='epp.package.java' name='Eclipse IDE for Java Developers' version='1.5.2.20130211-1820'>
-      <repositories size='2'>
-        <repository location='http://download.eclipse.org/releases/juno'/>
-        <repository location='http://marketplace.eclipse.org/repo/'/>
-      </repositories>
-    </iu>
-    <iu id='edu.umd.cs.findbugs.plugin.eclipse.feature.group' name='FindBugs Feature' version='2.0.2.20121210'>
+    <iu id='epp.package.java' name='Eclipse IDE for Java Developers' version='4.4.1.20140925-1820'>
       <repositories size='1'>
-        <repository location='http://findbugs.cs.umd.edu/eclipse'/>
+        <repository location='http://download.eclipse.org/releases/luna'/>
       </repositories>
     </iu>
-    <iu id='org.eclipse.wst.jsdt.feature.feature.group' name='JavaScript Development Tools' version='1.4.1.v201208171701-7H7DFg0FC7sReqSyfqesWi'>
-      <repositories size='2'>
-        <repository location='http://download.eclipse.org/releases/juno'/>
-        <repository location='http://marketplace.eclipse.org/repo/'/>
-      </repositories>
-    </iu>
-    <iu id='net.jeeeyul.pdetools.feature.feature.group' name='Jeeeyul&apos;s PDE-Tools' version='1.1.0.201301211219'>
+    <iu id='edu.umd.cs.findbugs.plugin.eclipse.feature.group' name='FindBugs Feature' version='3.0.0.20140706-2cfb468'>
       <repositories size='1'>
-        <repository location='https://raw.github.com/jeeeyul/pde-tools/master/net.jeeeyul.pdetools.updatesite'/>
+        <repository location='http://findbugs.cs.umd.edu/eclipse/'/>
       </repositories>
     </iu>
-    <iu id='org.moreunit.feature.group' name='MoreUnit For Java' version='3.0.2'>
+    <iu id='com.genymobile.genymotion.ide.eclipse.feature.group' name='Genymotion Eclipse Tools' version='1.0.3.201403261147'>
+      <repositories size='1'>
+        <repository location='http://plugins.genymotion.com/eclipse'/>
+      </repositories>
+    </iu>
+    <iu id='org.springsource.ide.eclipse.gradle.feature.feature.group' name='Gradle IDE' version='3.6.1.201408250705-RELEASE'>
+      <repositories size='1'>
+        <repository location='http://dist.springsource.com/release/TOOLS/gradle'/>
+      </repositories>
+    </iu>
+    <iu id='org.eclipse.jgit.http.apache.feature.group' name='Java implementation of Git - optional Http support using Apache httpclient' version='3.5.0.201409260305-r'>
+      <repositories size='1'>
+        <repository location='http://download.eclipse.org/egit/updates'/>
+      </repositories>
+    </iu>
+    <iu id='org.eclipse.jgit.java7.feature.group' name='Java implementation of Git - optional Java 7 libraries' version='3.5.0.201409260305-r'>
+      <repositories size='1'>
+        <repository location='http://download.eclipse.org/egit/updates'/>
+      </repositories>
+    </iu>
+    <iu id='org.eclipse.wst.jsdt.feature.feature.group' name='JavaScript Development Tools' version='1.6.100.v201409111605'>
+      <repositories size='1'>
+        <repository location='http://download.eclipse.org/releases/luna'/>
+      </repositories>
+    </iu>
+    <iu id='markdown.editor.feature.feature.group' name='Markdown Editor' version='0.2.3'>
+      <repositories size='1'>
+        <repository location='http://www.winterwell.com/software/updatesite/'/>
+      </repositories>
+    </iu>
+    <iu id='org.moreunit.feature.group' name='MoreUnit For Java' version='3.0.4'>
       <repositories size='1'>
         <repository location='http://moreunit.sourceforge.net/update-site/'/>
       </repositories>
     </iu>
-    <iu id='org.eclipse.mylyn.hudson.feature.group' name='Mylyn Builds Connector: Hudson/Jenkins' version='1.0.4.v20130429-0100'>
-      <repositories size='2'>
-        <repository location='http://download.eclipse.org/mylyn/releases/latest'/>
-        <repository location='http://download.eclipse.org/mylyn/releases/juno'/>
-      </repositories>
-    </iu>
-    <iu id='org.eclipse.mylyn.ide_feature.feature.group' name='Mylyn Context Connector: Eclipse IDE' version='3.8.4.v20130429-0100'>
-      <repositories size='2'>
-        <repository location='http://download.eclipse.org/mylyn/releases/latest'/>
-        <repository location='http://download.eclipse.org/mylyn/releases/juno'/>
-      </repositories>
-    </iu>
-    <iu id='org.eclipse.mylyn.java_feature.feature.group' name='Mylyn Context Connector: Java Development' version='3.8.4.v20130429-0100'>
-      <repositories size='2'>
-        <repository location='http://download.eclipse.org/mylyn/releases/latest'/>
-        <repository location='http://download.eclipse.org/mylyn/releases/juno'/>
-      </repositories>
-    </iu>
-    <iu id='org.eclipse.mylyn.team_feature.feature.group' name='Mylyn Context Connector: Team Support' version='3.8.4.v20130429-0100'>
-      <repositories size='2'>
-        <repository location='http://download.eclipse.org/mylyn/releases/latest'/>
-        <repository location='http://download.eclipse.org/mylyn/releases/juno'/>
-      </repositories>
-    </iu>
-    <iu id='org.eclipse.mylyn_feature.feature.group' name='Mylyn Task List' version='3.8.4.v20130429-0100'>
-      <repositories size='2'>
-        <repository location='http://download.eclipse.org/mylyn/releases/latest'/>
-        <repository location='http://download.eclipse.org/mylyn/releases/juno'/>
-      </repositories>
-    </iu>
-    <iu id='org.eclipse.mylyn.context_feature.feature.group' name='Mylyn Task-Focused Interface' version='3.8.4.v20130429-0100'>
-      <repositories size='2'>
-        <repository location='http://download.eclipse.org/mylyn/releases/latest'/>
-        <repository location='http://download.eclipse.org/mylyn/releases/juno'/>
-      </repositories>
-    </iu>
-    <iu id='org.eclipse.mylyn.versions.feature.group' name='Mylyn Versions' version='1.0.4.v20130429-0100'>
-      <repositories size='2'>
-        <repository location='http://download.eclipse.org/mylyn/releases/latest'/>
-        <repository location='http://download.eclipse.org/mylyn/releases/juno'/>
-      </repositories>
-    </iu>
-    <iu id='org.eclipse.mylyn.git.feature.group' name='Mylyn Versions Connector: Git' version='1.0.4.v20130429-0100'>
-      <repositories size='2'>
-        <repository location='http://download.eclipse.org/mylyn/releases/latest'/>
-        <repository location='http://download.eclipse.org/mylyn/releases/juno'/>
-      </repositories>
-    </iu>
-    <iu id='com.android.ide.eclipse.gldebugger.feature.group' name='Tracer for OpenGL ES' version='22.0.1.v201305230001--685705'>
+    <iu id='org.projectusus.feature.group' name='Project Usus' version='0.7.4.201401122006'>
       <repositories size='1'>
-        <repository location='https://dl-ssl.google.com/android/eclipse'/>
+        <repository location='http://projectusus.googlecode.com/svn/updates/'/>
       </repositories>
     </iu>
-    <iu id='org.ucdetector.feature.feature.group' name='UCDetector' version='1.10.0'>
+    <iu id='com.android.ide.eclipse.gldebugger.feature.feature.group' name='Tracer for OpenGL ES' version='23.0.4.1468518'>
       <repositories size='1'>
-        <repository location='http://ucdetector.sourceforge.net/update'/>
+        <repository location='https://dl-ssl.google.com/android/eclipse/'/>
       </repositories>
     </iu>
   </ius>

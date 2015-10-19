@@ -1,46 +1,94 @@
 package cgeo.geocaching.gcvote;
 
+import cgeo.geocaching.CgeoApplication;
 import cgeo.geocaching.Geocache;
-import cgeo.geocaching.Settings;
+import cgeo.geocaching.R;
+import cgeo.geocaching.enumerations.StatusCode;
 import cgeo.geocaching.network.Network;
 import cgeo.geocaching.network.Parameters;
+import cgeo.geocaching.settings.Credentials;
+import cgeo.geocaching.settings.Settings;
 import cgeo.geocaching.utils.LeastRecentlyUsedMap;
 import cgeo.geocaching.utils.Log;
-import cgeo.geocaching.utils.MatcherWrapper;
 
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.io.Charsets;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.eclipse.jdt.annotation.NonNull;
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserException;
+import org.xmlpull.v1.XmlPullParserFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 public final class GCVote {
-    private static final Pattern patternLogIn = Pattern.compile("loggedIn='([^']+)'", Pattern.CASE_INSENSITIVE);
-    private static final Pattern patternGuid = Pattern.compile("cacheId='([^']+)'", Pattern.CASE_INSENSITIVE);
-    private static final Pattern patternRating = Pattern.compile("voteAvg='([0-9.]+)'", Pattern.CASE_INSENSITIVE);
-    private static final Pattern patternVotes = Pattern.compile("voteCnt='([0-9]+)'", Pattern.CASE_INSENSITIVE);
-    private static final Pattern patternVote = Pattern.compile("voteUser='([0-9.]+)'", Pattern.CASE_INSENSITIVE);
-    private static final Pattern patternVoteElement = Pattern.compile("<vote ([^>]+)>", Pattern.CASE_INSENSITIVE);
+    public static final float NO_RATING = 0;
 
     private static final int MAX_CACHED_RATINGS = 1000;
-    private static LeastRecentlyUsedMap<String, GCVoteRating> ratingsCache = new LeastRecentlyUsedMap.LruCache<String, GCVoteRating>(MAX_CACHED_RATINGS);
+    private static final LeastRecentlyUsedMap<String, GCVoteRating> RATINGS_CACHE = new LeastRecentlyUsedMap.LruCache<>(MAX_CACHED_RATINGS);
+    private static final float MIN_RATING = 1;
+    private static final float MAX_RATING = 5;
+
+    private GCVote() {
+        // utility class
+    }
+
+    public static StatusCode login() {
+        final Credentials login = Settings.getGCVoteLogin();
+
+        if (login.isInvalid()) {
+            Log.e("Credentials can't be retreived");
+            return StatusCode.NO_LOGIN_INFO_STORED;
+        }
+
+        final Parameters params = new Parameters("version", "cgeo", "userName", login.getUsername(), "password", login.getPassword());
+
+        final InputStream response = Network.getResponseStream(Network.getRequest("http://gcvote.com/getVotes.php", params));
+
+        try {
+            final XmlPullParserFactory factory = XmlPullParserFactory.newInstance();
+            final XmlPullParser xpp = factory.newPullParser();
+            xpp.setInput(response, Charsets.UTF_8.name());
+            int eventType = xpp.getEventType();
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                if (eventType == XmlPullParser.START_TAG) {
+                    final String tagName = xpp.getName();
+                    if (StringUtils.equals(tagName, "votes")) {
+                        if (StringUtils.equals(xpp.getAttributeValue(null, "loggedIn"), "true")) {
+                            Log.i("Successfully logged in gcvote.com as " + login.getUsername());
+                            return StatusCode.NO_ERROR;
+                        }
+                        Log.e("Username or password is wrong");
+                        return StatusCode.WRONG_LOGIN_DATA;
+                    }
+                }
+                eventType = xpp.next();
+            }
+        } catch (final Exception e) {
+            Log.e("Cannot parse GCVote result", e);
+            return StatusCode.UNKNOWN_ERROR;
+        }
+
+        return StatusCode.UNKNOWN_ERROR;
+    }
 
     /**
      * Get user rating for a given guid or geocode. For a guid first the ratings cache is checked
      * before a request to gcvote.com is made.
-     *
-     * @param guid
-     * @param geocode
-     * @return
      */
-    public static GCVoteRating getRating(String guid, String geocode) {
-        if (StringUtils.isNotBlank(guid) && ratingsCache.containsKey(guid)) {
-            return ratingsCache.get(guid);
+    public static GCVoteRating getRating(final String guid, final String geocode) {
+        if (StringUtils.isNotBlank(guid) && RATINGS_CACHE.containsKey(guid)) {
+            return RATINGS_CACHE.get(guid);
         }
 
         final Map<String, GCVoteRating> ratings = getRating(singletonOrNull(guid), singletonOrNull(geocode));
@@ -53,197 +101,184 @@ public final class GCVote {
 
     /**
      * Get user ratings from gcvote.com
-     *
-     * @param guids
-     * @param geocodes
-     * @return
      */
-    public static Map<String, GCVoteRating> getRating(List<String> guids, List<String> geocodes) {
+    @NonNull
+    private static Map<String, GCVoteRating> getRating(final List<String> guids, final List<String> geocodes) {
         if (guids == null && geocodes == null) {
-            return null;
+            return Collections.emptyMap();
         }
 
-        final Map<String, GCVoteRating> ratings = new HashMap<String, GCVoteRating>();
+        final Parameters params = new Parameters("version", "cgeo");
+        final Credentials login = Settings.getGCVoteLogin();
+        if (login.isValid()) {
+            params.put("userName", login.getUsername(), "password", login.getPassword());
+        }
 
+        // use guid or gccode for lookup
+        final boolean requestByGuids = CollectionUtils.isNotEmpty(guids);
+        if (requestByGuids) {
+            params.put("cacheIds", StringUtils.join(guids, ','));
+        } else {
+            params.put("waypoints", StringUtils.join(geocodes, ','));
+        }
+        final InputStream response = Network.getResponseStream(Network.getRequest("http://gcvote.com/getVotes.php", params));
+        if (response == null) {
+            return Collections.emptyMap();
+        }
         try {
-            final Parameters params = new Parameters();
-            if (Settings.isLogin()) {
-                final ImmutablePair<String, String> login = Settings.getGCvoteLogin();
-                if (login != null) {
-                    params.put("userName", login.left, "password", login.right);
-                }
-            }
-            if (guids != null && !guids.isEmpty()) {
-                params.put("cacheIds", StringUtils.join(guids.toArray(), ','));
-            } else {
-                params.put("waypoints", StringUtils.join(geocodes.toArray(), ','));
-            }
-            params.put("version", "cgeo");
-            final String page = Network.getResponseData(Network.getRequest("http://gcvote.com/getVotes.php", params));
-            if (page == null) {
-                return null;
-            }
-
-            final MatcherWrapper matcherVoteElement = new MatcherWrapper(patternVoteElement, page);
-            while (matcherVoteElement.find()) {
-                String voteData = matcherVoteElement.group(1);
-                if (voteData == null) {
-                    continue;
-                }
-
-                String guid = null;
-                try {
-                    final MatcherWrapper matcherGuid = new MatcherWrapper(patternGuid, voteData);
-                    if (matcherGuid.find()) {
-                        if (matcherGuid.groupCount() > 0) {
-                            guid = matcherGuid.group(1);
-                        }
-                    }
-                } catch (Exception e) {
-                    Log.w("GCVote.getRating: Failed to parse guid");
-                }
-                if (guid == null) {
-                    continue;
-                }
-
-                boolean loggedIn = false;
-                try {
-                    final MatcherWrapper matcherLoggedIn = new MatcherWrapper(patternLogIn, page);
-                    if (matcherLoggedIn.find()) {
-                        if (matcherLoggedIn.groupCount() > 0) {
-                            if (matcherLoggedIn.group(1).equalsIgnoreCase("true")) {
-                                loggedIn = true;
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    Log.w("GCVote.getRating: Failed to parse loggedIn");
-                }
-
-                float rating = 0;
-                try {
-                    final MatcherWrapper matcherRating = new MatcherWrapper(patternRating, voteData);
-                    if (matcherRating.find()) {
-                        rating = Float.parseFloat(matcherRating.group(1));
-                    }
-                } catch (Exception e) {
-                    Log.w("GCVote.getRating: Failed to parse rating");
-                }
-                if (rating <= 0) {
-                    continue;
-                }
-
-                int votes = -1;
-                try {
-                    final MatcherWrapper matcherVotes = new MatcherWrapper(patternVotes, voteData);
-                    if (matcherVotes.find()) {
-                        votes = Integer.parseInt(matcherVotes.group(1));
-                    }
-                } catch (Exception e) {
-                    Log.w("GCVote.getRating: Failed to parse vote count");
-                }
-                if (votes < 0) {
-                    continue;
-                }
-
-                float myVote = 0;
-                if (loggedIn) {
-                    try {
-                        final MatcherWrapper matcherVote = new MatcherWrapper(patternVote, voteData);
-                        if (matcherVote.find()) {
-                            myVote = Float.parseFloat(matcherVote.group(1));
-                        }
-                    } catch (Exception e) {
-                        Log.w("GCVote.getRating: Failed to parse user's vote");
-                    }
-                }
-
-                if (StringUtils.isNotBlank(guid)) {
-                    GCVoteRating gcvoteRating = new GCVoteRating(rating, votes, myVote);
-                    ratings.put(guid, gcvoteRating);
-                    ratingsCache.put(guid, gcvoteRating);
-                }
-            }
-        } catch (Exception e) {
-            Log.e("GCVote.getRating", e);
+            return getRatingsFromXMLResponse(response, requestByGuids);
+        } finally {
+            IOUtils.closeQuietly(response);
         }
+    }
 
-        return ratings;
+    static Map<String, GCVoteRating> getRatingsFromXMLResponse(@NonNull final InputStream response, final boolean requestByGuids) {
+        try {
+            final XmlPullParserFactory factory = XmlPullParserFactory.newInstance();
+            final XmlPullParser xpp = factory.newPullParser();
+            xpp.setInput(response, Charsets.UTF_8.name());
+            boolean loggedIn = false;
+            final Map<String, GCVoteRating> ratings = new HashMap<>();
+            int eventType = xpp.getEventType();
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                if (eventType == XmlPullParser.START_TAG) {
+                    final String tagName = xpp.getName();
+                    if (StringUtils.equals(tagName, "vote")) {
+                        final String id = xpp.getAttributeValue(null, requestByGuids ? "cacheId" : "waypoint");
+                        final float myVote = loggedIn ? Float.parseFloat(xpp.getAttributeValue(null, "voteUser")) : 0;
+                        final GCVoteRating voteRating = new GCVoteRating(Float.parseFloat(xpp.getAttributeValue(null, "voteAvg")),
+                                Integer.parseInt(xpp.getAttributeValue(null, "voteCnt")),
+                                myVote);
+                        ratings.put(id, voteRating);
+                    } else if (StringUtils.equals(tagName, "votes")) {
+                        loggedIn = StringUtils.equals(xpp.getAttributeValue(null, "loggedIn"), "true");
+                    }
+                }
+                eventType = xpp.next();
+            }
+            RATINGS_CACHE.putAll(ratings);
+            return ratings;
+        } catch (final NumberFormatException | XmlPullParserException | IOException e) {
+            Log.e("Cannot parse GCVote result", e);
+            return Collections.emptyMap();
+
+        }
     }
 
     /**
      * Transmit user vote to gcvote.com
-     * 
-     * @param cache
-     * @param vote
+     *
+     * @param cache the geocache (supported by GCVote)
+     * @param rating the rating
      * @return {@code true} if the rating was submitted successfully
      */
-    public static boolean setRating(Geocache cache, double vote) {
-        if (!Settings.isGCvoteLogin()) {
-            return false;
+    public static boolean setRating(final Geocache cache, final float rating) {
+        if (!isVotingPossible(cache)) {
+            throw new IllegalArgumentException("voting is not possible for " + cache);
         }
-        if (!cache.supportsGCVote()) {
-            return false;
-        }
-        String guid = cache.getGuid();
-        if (StringUtils.isBlank(guid)) {
-            return false;
-        }
-        if (vote <= 0.0 || vote > 5.0) {
-            return false;
+        if (!isValidRating(rating)) {
+            throw new IllegalArgumentException("invalid rating " + rating);
         }
 
-        final ImmutablePair<String, String> login = Settings.getGCvoteLogin();
-        if (login == null) {
+        final Credentials login = Settings.getGCVoteLogin();
+        if (login.isInvalid()) {
+            Log.e("GCVote.setRating: cannot find credentials");
             return false;
         }
-
         final Parameters params = new Parameters(
-                "userName", login.left,
-                "password", login.right,
-                "cacheId", guid,
-                "voteUser", String.format("%.1f", vote).replace(',', '.'),
+                "userName", login.getUsername(),
+                "password", login.getPassword(),
+                "cacheId", cache.getGuid(),
+                "waypoint", cache.getGeocode(),
+                "voteUser", String.format(Locale.US, "%.1f", rating),
                 "version", "cgeo");
 
-        final String result = Network.getResponseData(Network.getRequest("http://gcvote.com/setVote.php", params));
-
-        return result.trim().equalsIgnoreCase("ok");
+        final String result = StringUtils.trim(Network.getResponseData(Network.getRequest("http://gcvote.com/setVote.php", params)));
+        if (!StringUtils.equalsIgnoreCase(result, "ok")) {
+            Log.e("GCVote.setRating: could not post rating, answer was " + result);
+            return false;
+        }
+        return true;
     }
 
-    public static void loadRatings(ArrayList<Geocache> caches) {
+    public static void loadRatings(final @NonNull List<Geocache> caches) {
         if (!Settings.isRatingWanted()) {
             return;
         }
 
-        final ArrayList<String> guids = new ArrayList<String>(caches.size());
-        for (final Geocache cache : caches) {
-            String guid = cache.getGuid();
-            if (StringUtils.isNotBlank(guid)) {
-                guids.add(guid);
-            }
-        }
-
-        if (guids.isEmpty()) {
+        final List<String> geocodes = getVotableGeocodes(caches);
+        if (geocodes.isEmpty()) {
             return;
         }
 
         try {
-            final Map<String, GCVoteRating> ratings = GCVote.getRating(guids, null);
+            final Map<String, GCVoteRating> ratings = getRating(null, geocodes);
 
-            if (MapUtils.isNotEmpty(ratings)) {
-                // save found cache coordinates
-                for (Geocache cache : caches) {
-                    if (ratings.containsKey(cache.getGuid())) {
-                        GCVoteRating rating = ratings.get(cache.getGuid());
+            // save found cache coordinates
+            for (final Geocache cache : caches) {
+                if (ratings.containsKey(cache.getGeocode())) {
+                    final GCVoteRating rating = ratings.get(cache.getGeocode());
 
-                        cache.setRating(rating.getRating());
-                        cache.setVotes(rating.getVotes());
-                        cache.setMyVote(rating.getMyVote());
-                    }
+                    cache.setRating(rating.getRating());
+                    cache.setVotes(rating.getVotes());
+                    cache.setMyVote(rating.getMyVote());
                 }
             }
-        } catch (Exception e) {
-            Log.e("GCvote.loadRatings", e);
+        } catch (final Exception e) {
+            Log.e("GCVote.loadRatings", e);
         }
     }
+
+    /**
+     * Get geocodes of all the caches, which can be used with GCVote. Non-GC caches will be filtered out.
+     */
+    private static @NonNull
+    List<String> getVotableGeocodes(final @NonNull Collection<Geocache> caches) {
+        final List<String> geocodes = new ArrayList<>(caches.size());
+        for (final Geocache cache : caches) {
+            final String geocode = cache.getGeocode();
+            if (StringUtils.isNotBlank(geocode) && cache.supportsGCVote()) {
+                geocodes.add(geocode);
+            }
+        }
+        return geocodes;
+    }
+
+    public static boolean isValidRating(final float rating) {
+        return rating >= MIN_RATING && rating <= MAX_RATING;
+    }
+
+    public static boolean isVotingPossible(@NonNull final Geocache cache) {
+        return Settings.isGCVoteLoginValid() && StringUtils.isNotBlank(cache.getGuid()) && cache.supportsGCVote();
+    }
+
+    static String getDescription(final float rating) {
+        switch (Math.round(rating * 2f)) {
+            case 2:
+                return getString(R.string.log_stars_1_description);
+            case 3:
+                return getString(R.string.log_stars_15_description);
+            case 4:
+                return getString(R.string.log_stars_2_description);
+            case 5:
+                return getString(R.string.log_stars_25_description);
+            case 6:
+                return getString(R.string.log_stars_3_description);
+            case 7:
+                return getString(R.string.log_stars_35_description);
+            case 8:
+                return getString(R.string.log_stars_4_description);
+            case 9:
+                return getString(R.string.log_stars_45_description);
+            case 10:
+                return getString(R.string.log_stars_5_description);
+            default:
+                return getString(R.string.log_no_rating);
+        }
+    }
+
+    private static String getString(final int resId) {
+        return CgeoApplication.getInstance().getString(resId);
+    }
+
 }

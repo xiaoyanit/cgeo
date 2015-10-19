@@ -16,8 +16,7 @@
         android:ellipsize="end"
         android:gravity="right"
         android:lines="1"
-        android:scrollHorizontally="true"
-        android:singleLine="true"
+        android:scrollHorizontally="false"
         android:text="@null"
         android:textColor="?text_color_headline"
         android:textIsSelectable="false"
@@ -35,17 +34,18 @@
         android:textIsSelectable="false"
         android:textSize="14sp" />
 
-    <LinearLayout
+    <RatingBar
         android:id="@+id/stars"
+        style="@style/cacheRatingBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_centerVertical="true"
+        android:layout_gravity="center_horizontal"
         android:layout_toRightOf="@+id/value"
         android:baselineAligned="false"
         android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:visibility="gone" >
-    </LinearLayout>
+        android:numStars="5"
+        android:visibility="gone" />
 
     <TextView
         android:id="@+id/addition"

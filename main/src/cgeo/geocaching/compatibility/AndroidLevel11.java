@@ -1,17 +1,15 @@
 package cgeo.geocaching.compatibility;
 
 import android.annotation.TargetApi;
-import android.app.Activity;
+import android.os.Build;
+import android.widget.TextView;
 
-/**
- * Android level 11 support
- */
-@TargetApi(11)
+@TargetApi(Build.VERSION_CODES.HONEYCOMB)
 public class AndroidLevel11 implements AndroidLevel11Interface {
 
     @Override
-    public void invalidateOptionsMenu(final Activity activity) {
-        activity.invalidateOptionsMenu();
+    public void setTextIsSelectable(final TextView textView, final boolean selectable) {
+        textView.setTextIsSelectable(selectable);
     }
 
 }

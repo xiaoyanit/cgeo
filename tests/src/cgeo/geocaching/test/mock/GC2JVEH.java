@@ -2,11 +2,13 @@ package cgeo.geocaching.test.mock;
 
 import cgeo.geocaching.Image;
 import cgeo.geocaching.Trackable;
-import cgeo.geocaching.connector.gc.Login;
+import cgeo.geocaching.connector.gc.GCLogin;
 import cgeo.geocaching.enumerations.CacheSize;
 import cgeo.geocaching.enumerations.CacheType;
 import cgeo.geocaching.enumerations.LogType;
-import cgeo.geocaching.geopoint.Geopoint;
+import cgeo.geocaching.location.Geopoint;
+
+import org.eclipse.jdt.annotation.NonNull;
 
 import java.text.ParseException;
 import java.util.ArrayList;
@@ -36,6 +38,7 @@ public class GC2JVEH extends MockedCache {
         return 3.0f;
     }
 
+    @NonNull
     @Override
     public String getGeocode() {
         return "GC2JVEH";
@@ -56,11 +59,13 @@ public class GC2JVEH extends MockedCache {
         return "indianerjones, der merlyn,reflektordetektor";
     }
 
+    @NonNull
     @Override
     public String getOwnerUserId() {
         return "indianerjones";
     }
 
+    @NonNull
     @Override
     public CacheSize getSize() {
         return CacheSize.SMALL;
@@ -89,13 +94,14 @@ public class GC2JVEH extends MockedCache {
     @Override
     public Date getHiddenDate() {
         try {
-            return Login.parseGcCustomDate("28/11/2010", getDateFormat());
+            return GCLogin.parseGcCustomDate("2010-11-28", getDateFormat());
         } catch (ParseException e) {
             // intentionally left blank
         }
         return null;
     }
 
+    @NonNull
     @Override
     public List<String> getAttributes() {
         final String[] attributes = new String[] {
@@ -139,9 +145,10 @@ public class GC2JVEH extends MockedCache {
     }
 
     @Override
+    @NonNull
     public List<Image> getSpoilers() {
         final ArrayList<Image> spoilers = new ArrayList<Image>();
-        final Image mockedImage = new Image(null, null, null);
+        final Image mockedImage = Image.NONE;
         spoilers.add(mockedImage);
         spoilers.add(mockedImage);
         spoilers.add(mockedImage);

@@ -1,11 +1,10 @@
 package cgeo.geocaching.maps.mapsforge;
 
 import cgeo.geocaching.R;
-import cgeo.geocaching.Settings;
-import cgeo.geocaching.geopoint.Viewport;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.location.Viewport;
 import cgeo.geocaching.maps.CachesOverlay;
-import cgeo.geocaching.maps.PositionOverlay;
-import cgeo.geocaching.maps.ScaleOverlay;
+import cgeo.geocaching.maps.PositionAndScaleOverlay;
 import cgeo.geocaching.maps.interfaces.GeneralOverlay;
 import cgeo.geocaching.maps.interfaces.GeoPointImpl;
 import cgeo.geocaching.maps.interfaces.MapControllerImpl;
@@ -13,11 +12,11 @@ import cgeo.geocaching.maps.interfaces.MapProjectionImpl;
 import cgeo.geocaching.maps.interfaces.MapSource;
 import cgeo.geocaching.maps.interfaces.MapViewImpl;
 import cgeo.geocaching.maps.interfaces.OnMapDragListener;
-import cgeo.geocaching.maps.interfaces.OverlayImpl;
-import cgeo.geocaching.maps.interfaces.OverlayImpl.overlayType;
+import cgeo.geocaching.settings.Settings;
 import cgeo.geocaching.utils.Log;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.NonNull;
 import org.mapsforge.android.maps.MapView;
 import org.mapsforge.android.maps.Projection;
 import org.mapsforge.android.maps.mapgenerator.MapGenerator;
@@ -26,7 +25,6 @@ import org.mapsforge.android.maps.mapgenerator.MapGeneratorInternal;
 import org.mapsforge.android.maps.overlay.Overlay;
 import org.mapsforge.core.GeoPoint;
 
-import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
@@ -43,13 +41,23 @@ public class MapsforgeMapView extends MapView implements MapViewImpl {
     private OnMapDragListener onDragListener;
     private final MapsforgeMapController mapController = new MapsforgeMapController(getController(), getMapGenerator().getZoomLevelMax());
 
-    public MapsforgeMapView(Context context, AttributeSet attrs) {
+    public MapsforgeMapView(final Context context, final AttributeSet attrs) {
         super(context, attrs);
+        initialize(context);
+    }
+
+    private void initialize(final Context context) {
+        if (isInEditMode()) {
+            return;
+        }
         gestureDetector = new GestureDetector(context, new GestureListener());
+        if (Settings.isScaleMapsforgeText()) {
+            this.setTextScale(getResources().getDisplayMetrics().density);
+        }
     }
 
     @Override
-    public void draw(Canvas canvas) {
+    public void draw(final Canvas canvas) {
         try {
             // Google Maps and OSM Maps use different zoom levels for the same view.
             // Here we don't want the Google Maps compatible zoom level, but the actual one.
@@ -58,13 +66,13 @@ public class MapsforgeMapView extends MapView implements MapViewImpl {
             }
 
             super.draw(canvas);
-        } catch (Exception e) {
+        } catch (final Exception e) {
             Log.e("MapsforgeMapView.draw", e);
         }
     }
 
     @Override
-    public void displayZoomControls(boolean takeFocus) {
+    public void displayZoomControls(final boolean takeFocus) {
         // nothing to do here
     }
 
@@ -74,19 +82,15 @@ public class MapsforgeMapView extends MapView implements MapViewImpl {
     }
 
     @Override
+    @NonNull
     public GeoPointImpl getMapViewCenter() {
-        GeoPoint point = getMapPosition().getMapCenter();
+        final GeoPoint point = getMapPosition().getMapCenter();
         return new MapsforgeGeoPoint(point.latitudeE6, point.longitudeE6);
     }
 
     @Override
     public Viewport getViewport() {
         return new Viewport(getMapViewCenter(), getLatitudeSpan() / 1e6, getLongitudeSpan() / 1e6);
-    }
-
-    @Override
-    public void addOverlay(OverlayImpl ovl) {
-        getOverlays().add((Overlay) ovl);
     }
 
     @Override
@@ -100,25 +104,18 @@ public class MapsforgeMapView extends MapView implements MapViewImpl {
     }
 
     @Override
-    public CachesOverlay createAddMapOverlay(Context context, Drawable drawable) {
+    public CachesOverlay createAddMapOverlay(final Context context, final Drawable drawable) {
 
-        MapsforgeCacheOverlay ovl = new MapsforgeCacheOverlay(context, drawable);
+        final MapsforgeCacheOverlay ovl = new MapsforgeCacheOverlay(context, drawable);
         getOverlays().add(ovl);
         return ovl.getBase();
     }
 
     @Override
-    public PositionOverlay createAddPositionOverlay(Activity activity) {
-        MapsforgeOverlay ovl = new MapsforgeOverlay(activity, overlayType.PositionOverlay);
+    public PositionAndScaleOverlay createAddPositionAndScaleOverlay(final Geopoint coords, final String geocode) {
+        final MapsforgeOverlay ovl = new MapsforgeOverlay(this, coords, geocode);
         getOverlays().add(ovl);
-        return (PositionOverlay) ovl.getBase();
-    }
-
-    @Override
-    public ScaleOverlay createAddScaleOverlay(Activity activity) {
-        MapsforgeOverlay ovl = new MapsforgeOverlay(activity, overlayType.ScaleOverlay);
-        getOverlays().add(ovl);
-        return (ScaleOverlay) ovl.getBase();
+        return (PositionAndScaleOverlay) ovl.getBase();
     }
 
     @Override
@@ -126,12 +123,12 @@ public class MapsforgeMapView extends MapView implements MapViewImpl {
 
         int span = 0;
 
-        Projection projection = getProjection();
+        final Projection projection = getProjection();
 
         if (projection != null && getHeight() > 0) {
 
-            GeoPoint low = projection.fromPixels(0, 0);
-            GeoPoint high = projection.fromPixels(0, getHeight());
+            final GeoPoint low = projection.fromPixels(0, 0);
+            final GeoPoint high = projection.fromPixels(0, getHeight());
 
             if (low != null && high != null) {
                 span = Math.abs(high.latitudeE6 - low.latitudeE6);
@@ -146,11 +143,11 @@ public class MapsforgeMapView extends MapView implements MapViewImpl {
 
         int span = 0;
 
-        Projection projection = getProjection();
+        final Projection projection = getProjection();
 
         if (projection != null && getWidth() > 0) {
-            GeoPoint low = projection.fromPixels(0, 0);
-            GeoPoint high = projection.fromPixels(getWidth(), 0);
+            final GeoPoint low = projection.fromPixels(0, 0);
+            final GeoPoint high = projection.fromPixels(getWidth(), 0);
 
             if (low != null && high != null) {
                 span = Math.abs(high.longitudeE6 - low.longitudeE6);
@@ -195,7 +192,7 @@ public class MapsforgeMapView extends MapView implements MapViewImpl {
             newMapType = ((MapsforgeMapSource) mapSource).getGenerator();
         }
 
-        MapGenerator mapGenerator = MapGeneratorFactory.createMapGenerator(newMapType);
+        final MapGenerator mapGenerator = MapGeneratorFactory.createMapGenerator(newMapType);
 
         // When swapping map sources, make sure we aren't exceeding max zoom. See bug #1535
         final int maxZoom = mapGenerator.getZoomLevelMax();
@@ -234,11 +231,11 @@ public class MapsforgeMapView extends MapView implements MapViewImpl {
 
     @Override
     public void setMapTheme() {
-        String customRenderTheme = Settings.getCustomRenderThemeFilePath();
-        if (!StringUtils.isEmpty(customRenderTheme)) {
+        final String customRenderTheme = Settings.getCustomRenderThemeFilePath();
+        if (StringUtils.isNotEmpty(customRenderTheme)) {
             try {
                 setRenderTheme(new File(customRenderTheme));
-            } catch (FileNotFoundException e) {
+            } catch (final FileNotFoundException ignored) {
                 Toast.makeText(
                         getContext(),
                         getContext().getResources().getString(R.string.warn_rendertheme_missing),
@@ -251,38 +248,38 @@ public class MapsforgeMapView extends MapView implements MapViewImpl {
     }
 
     @Override
-    public void repaintRequired(GeneralOverlay overlay) {
+    public void repaintRequired(final GeneralOverlay overlay) {
 
         if (null == overlay) {
             invalidate();
         } else {
             try {
-                Overlay ovl = (Overlay) overlay.getOverlayImpl();
+                final Overlay ovl = (Overlay) overlay.getOverlayImpl();
 
                 if (ovl != null) {
                     ovl.requestRedraw();
                 }
 
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 Log.e("MapsforgeMapView.repaintRequired", e);
             }
         }
     }
 
     @Override
-    public void setOnDragListener(OnMapDragListener onDragListener) {
+    public void setOnDragListener(final OnMapDragListener onDragListener) {
         this.onDragListener = onDragListener;
     }
 
     @Override
-    public boolean onTouchEvent(MotionEvent ev) {
+    public boolean onTouchEvent(final MotionEvent ev) {
         gestureDetector.onTouchEvent(ev);
         return super.onTouchEvent(ev);
     }
 
     private class GestureListener extends SimpleOnGestureListener {
         @Override
-        public boolean onDoubleTap(MotionEvent e) {
+        public boolean onDoubleTap(final MotionEvent e) {
             if (onDragListener != null) {
                 onDragListener.onDrag();
             }
@@ -290,8 +287,8 @@ public class MapsforgeMapView extends MapView implements MapViewImpl {
         }
 
         @Override
-        public boolean onScroll(MotionEvent e1, MotionEvent e2,
-                float distanceX, float distanceY) {
+        public boolean onScroll(final MotionEvent e1, final MotionEvent e2,
+                final float distanceX, final float distanceY) {
             if (onDragListener != null) {
                 onDragListener.onDrag();
             }

@@ -1,15 +1,21 @@
 package cgeo.geocaching;
 
+import butterknife.Bind;
+import butterknife.ButterKnife;
+
+import cgeo.geocaching.network.StatusUpdater;
 import cgeo.geocaching.network.StatusUpdater.Status;
-import cgeo.geocaching.utils.IObserver;
 import cgeo.geocaching.utils.Log;
+
+import rx.Subscription;
+import rx.android.app.AppObservable;
+import rx.functions.Action1;
+import rx.subscriptions.Subscriptions;
 
 import android.content.Intent;
 import android.content.res.Resources;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Message;
 import android.support.v4.app.Fragment;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -20,91 +26,72 @@ import android.widget.TextView;
 
 public class StatusFragment extends Fragment {
 
-    private ViewGroup status;
-    private ImageView statusIcon;
-    private TextView statusMessage;
+    protected @Bind(R.id.status_icon) ImageView statusIcon;
+    protected @Bind(R.id.status_message) TextView statusMessage;
 
-    final private StatusHandler statusHandler = new StatusHandler();
+    private Subscription statusSubscription = Subscriptions.empty();
 
     @Override
     public View onCreateView(final LayoutInflater inflater, final ViewGroup container, final Bundle savedInstanceState) {
         super.onCreateView(inflater, container, savedInstanceState);
-        status = (ViewGroup) inflater.inflate(R.layout.status, container, false);
-        statusIcon = (ImageView) status.findViewById(R.id.status_icon);
-        statusMessage = (TextView) status.findViewById(R.id.status_message);
-        return status;
-    }
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        cgeoapplication.getInstance().getStatusUpdater().addObserver(statusHandler);
-    }
-
-    @Override
-    public void onPause() {
-        cgeoapplication.getInstance().getStatusUpdater().deleteObserver(statusHandler);
-        super.onPause();
-    }
-
-    private class StatusHandler extends Handler implements IObserver<Status> {
-
-        @Override
-        public void update(final Status data) {
-            obtainMessage(0, data).sendToTarget();
-        }
-
-        @Override
-        public void handleMessage(final Message msg) {
-            final Status data = (Status) msg.obj;
-            updateDisplay(data != null && data.message != null ? data : null);
-        }
-
-        private void updateDisplay(final Status data) {
-
-            if (data == null) {
-                status.setVisibility(View.INVISIBLE);
-                return;
-            }
-
-            final Resources res = getResources();
-            final String packageName = getActivity().getPackageName();
-
-            if (data.icon != null) {
-                final int iconId = res.getIdentifier(data.icon, "drawable", packageName);
-                if (iconId != 0) {
-                    statusIcon.setImageResource(iconId);
-                    statusIcon.setVisibility(View.VISIBLE);
-                } else {
-                    Log.w("StatusHandler: could not find icon corresponding to @drawable/" + data.icon);
-                    statusIcon.setVisibility(View.GONE);
-                }
-            } else {
-                statusIcon.setVisibility(View.GONE);
-            }
-
-            String message = data.message;
-            if (data.messageId != null) {
-                final int messageId = res.getIdentifier(data.messageId, "string", packageName);
-                if (messageId != 0) {
-                    message = res.getString(messageId);
-                }
-            }
-
-            statusMessage.setText(message);
-            status.setVisibility(View.VISIBLE);
-
-            if (data.url != null) {
-                status.setOnClickListener(new OnClickListener() {
+        final ViewGroup statusGroup = (ViewGroup) inflater.inflate(R.layout.status, container, false);
+        ButterKnife.bind(this, statusGroup);
+        statusSubscription = AppObservable.bindSupportFragment(this, StatusUpdater.LATEST_STATUS)
+                .subscribe(new Action1<Status>() {
                     @Override
-                    public void onClick(final View v) {
-                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(data.url)));
+                    public void call(final Status status) {
+                        if (status == null) {
+                            statusGroup.setVisibility(View.INVISIBLE);
+                            return;
+                        }
+
+                        final Resources res = getResources();
+                        final String packageName = getActivity().getPackageName();
+
+                        if (status.icon != null) {
+                            final int iconId = res.getIdentifier(status.icon, "drawable", packageName);
+                            if (iconId != 0) {
+                                statusIcon.setImageResource(iconId);
+                                statusIcon.setVisibility(View.VISIBLE);
+                            } else {
+                                Log.w("StatusHandler: could not find icon corresponding to @drawable/" + status.icon);
+                                statusIcon.setVisibility(View.GONE);
+                            }
+                        } else {
+                            statusIcon.setVisibility(View.GONE);
+                        }
+
+                        String message = status.message;
+                        if (status.messageId != null) {
+                            final int messageId = res.getIdentifier(status.messageId, "string", packageName);
+                            if (messageId != 0) {
+                                message = res.getString(messageId);
+                            }
+                        }
+
+                        statusMessage.setText(message);
+                        statusGroup.setVisibility(View.VISIBLE);
+
+                        if (status.url != null) {
+                            statusGroup.setOnClickListener(new OnClickListener() {
+                                @Override
+                                public void onClick(final View v) {
+                                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(status.url)));
+                                }
+                            });
+                        } else {
+                            statusGroup.setClickable(false);
+                        }
                     }
                 });
-            } else {
-                status.setClickable(false);
-            }
-        }
-
+        return statusGroup;
     }
+
+    @Override
+    public void onDestroyView() {
+        statusSubscription.unsubscribe();
+        super.onDestroyView();
+        ButterKnife.unbind(this);
+    }
+
 }

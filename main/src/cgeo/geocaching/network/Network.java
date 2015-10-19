@@ -1,22 +1,16 @@
 package cgeo.geocaching.network;
 
-import cgeo.geocaching.Settings;
+import cgeo.geocaching.CgeoApplication;
 import cgeo.geocaching.files.LocalStorage;
-import cgeo.geocaching.utils.BaseUtils;
+import cgeo.geocaching.settings.Settings;
+import cgeo.geocaching.utils.JsonUtils;
 import cgeo.geocaching.utils.Log;
+import cgeo.geocaching.utils.TextUtils;
 
-import ch.boye.httpclientandroidlib.Header;
-import ch.boye.httpclientandroidlib.HeaderElement;
 import ch.boye.httpclientandroidlib.HttpEntity;
-import ch.boye.httpclientandroidlib.HttpException;
-import ch.boye.httpclientandroidlib.HttpRequest;
-import ch.boye.httpclientandroidlib.HttpRequestInterceptor;
 import ch.boye.httpclientandroidlib.HttpResponse;
-import ch.boye.httpclientandroidlib.HttpResponseInterceptor;
 import ch.boye.httpclientandroidlib.NameValuePair;
-import ch.boye.httpclientandroidlib.ProtocolException;
 import ch.boye.httpclientandroidlib.client.HttpClient;
-import ch.boye.httpclientandroidlib.client.entity.GzipDecompressingEntity;
 import ch.boye.httpclientandroidlib.client.entity.UrlEncodedFormEntity;
 import ch.boye.httpclientandroidlib.client.methods.HttpGet;
 import ch.boye.httpclientandroidlib.client.methods.HttpPost;
@@ -26,19 +20,20 @@ import ch.boye.httpclientandroidlib.entity.StringEntity;
 import ch.boye.httpclientandroidlib.entity.mime.MultipartEntity;
 import ch.boye.httpclientandroidlib.entity.mime.content.FileBody;
 import ch.boye.httpclientandroidlib.entity.mime.content.StringBody;
+import ch.boye.httpclientandroidlib.impl.client.DecompressingHttpClient;
 import ch.boye.httpclientandroidlib.impl.client.DefaultHttpClient;
-import ch.boye.httpclientandroidlib.impl.client.DefaultRedirectStrategy;
+import ch.boye.httpclientandroidlib.impl.client.LaxRedirectStrategy;
 import ch.boye.httpclientandroidlib.params.BasicHttpParams;
 import ch.boye.httpclientandroidlib.params.CoreConnectionPNames;
 import ch.boye.httpclientandroidlib.params.CoreProtocolPNames;
 import ch.boye.httpclientandroidlib.params.HttpParams;
-import ch.boye.httpclientandroidlib.protocol.HttpContext;
 import ch.boye.httpclientandroidlib.util.EntityUtils;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import org.apache.commons.lang3.CharEncoding;
 import org.apache.commons.lang3.StringUtils;
-import org.json.JSONException;
-import org.json.JSONObject;
+import org.eclipse.jdt.annotation.Nullable;
 
 import android.content.Context;
 import android.net.ConnectivityManager;
@@ -47,100 +42,44 @@ import android.net.Uri;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
-import java.nio.charset.Charset;
+import java.util.regex.Pattern;
 
-public abstract class Network {
-
-    private static final int NB_DOWNLOAD_RETRIES = 4;
+public final class Network {
 
     /** User agent id */
     private final static String PC_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:9.0.1) Gecko/20100101 Firefox/9.0.1";
     /** Native user agent, taken from a Android 2.2 Nexus **/
     private final static String NATIVE_USER_AGENT = "Mozilla/5.0 (Linux; U; Android 2.2; en-us; Nexus One Build/FRF91) AppleWebKit/533.1 (KHTML, like Gecko) Version/4.0 Mobile Safari/533.1";
 
-    private static final String PATTERN_PASSWORD = "(?<=[\\?&])[Pp]ass(w(or)?d)?=[^&#$]+";
+    private static final Pattern PATTERN_PASSWORD = Pattern.compile("(?<=[\\?&])[Pp]ass(w(or)?d)?=[^&#$]+");
 
-    /**
-     * charset for requests
-     *
-     * @see "http://docs.oracle.com/javase/1.5.0/docs/api/java/nio/charset/Charset.html"
-     */
-    private static final Charset CHARSET_UTF8 = Charset.forName("UTF-8");
-
-    private final static HttpParams clientParams = new BasicHttpParams();
+    private final static HttpParams CLIENT_PARAMS = new BasicHttpParams();
 
     static {
-        Network.clientParams.setParameter(CoreProtocolPNames.HTTP_CONTENT_CHARSET, CharEncoding.UTF_8);
-        Network.clientParams.setParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 30000);
-        Network.clientParams.setParameter(CoreConnectionPNames.SO_TIMEOUT, 30000);
-        Network.clientParams.setParameter(ClientPNames.HANDLE_REDIRECTS,  true);
+        CLIENT_PARAMS.setParameter(CoreProtocolPNames.HTTP_CONTENT_CHARSET, CharEncoding.UTF_8);
+        CLIENT_PARAMS.setParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 30000);
+        CLIENT_PARAMS.setParameter(CoreConnectionPNames.SO_TIMEOUT, 30000);
+        CLIENT_PARAMS.setParameter(ClientPNames.HANDLE_REDIRECTS, true);
+    }
+
+    private Network() {
+        // Utility class
     }
 
     private static String hidePassword(final String message) {
-        return message.replaceAll(Network.PATTERN_PASSWORD, "password=***");
+        return PATTERN_PASSWORD.matcher(message).replaceAll("password=***");
     }
 
     private static HttpClient getHttpClient() {
         final DefaultHttpClient client = new DefaultHttpClient();
         client.setCookieStore(Cookies.cookieStore);
-        client.setParams(clientParams);
-
-        client.setRedirectStrategy(new DefaultRedirectStrategy() {
-            @Override
-            public boolean isRedirected(HttpRequest request, HttpResponse response, HttpContext context) {
-                boolean isRedirect = false;
-                try {
-                    isRedirect = super.isRedirected(request, response, context);
-                } catch (final ProtocolException e) {
-                    Log.e("httpclient.isRedirected: unable to check for redirection", e);
-                }
-                if (!isRedirect) {
-                    final int responseCode = response.getStatusLine().getStatusCode();
-                    if (responseCode == 301 || responseCode == 302) {
-                        return true;
-                    }
-                }
-                return isRedirect;
-            }
-        });
-
-        client.addRequestInterceptor(new HttpRequestInterceptor() {
-
-            @Override
-            public void process(
-                    final HttpRequest request,
-                    final HttpContext context) throws HttpException, IOException {
-                if (!request.containsHeader("Accept-Encoding")) {
-                    request.addHeader("Accept-Encoding", "gzip");
-                }
-            }
-        });
-        client.addResponseInterceptor(new HttpResponseInterceptor() {
-
-            @Override
-            public void process(
-                    final HttpResponse response,
-                    final HttpContext context) throws HttpException, IOException {
-                final HttpEntity entity = response.getEntity();
-                if (entity != null) {
-                    final Header contentEncoding = entity.getContentEncoding();
-                    if (contentEncoding != null) {
-                        for (final HeaderElement codec : contentEncoding.getElements()) {
-                            if (codec.getName().equalsIgnoreCase("gzip")) {
-                                response.setEntity(new GzipDecompressingEntity(response.getEntity()));
-                                return;
-                            }
-                        }
-                    }
-                }
-            }
-
-        });
-
-        return client;
+        client.setParams(CLIENT_PARAMS);
+        client.setRedirectStrategy(new LaxRedirectStrategy());
+        return new DecompressingHttpClient(client);
     }
 
     /**
@@ -150,6 +89,7 @@ public abstract class Network {
      * @param params the parameters to add to the POST request
      * @return the HTTP response, or null in case of an encoding error params
      */
+    @Nullable
     public static HttpResponse postRequest(final String uri, final Parameters params) {
         return request("POST", uri, params, null, null);
     }
@@ -159,9 +99,10 @@ public abstract class Network {
      *
      * @param uri the URI to request
      * @param params the parameters to add to the POST request
-     * @params headers the headers to add to the request
+     * @param headers the headers to add to the request
      * @return the HTTP response, or null in case of an encoding error params
      */
+    @Nullable
     public static HttpResponse postRequest(final String uri, final Parameters params, final Parameters headers) {
         return request("POST", uri, params, headers, null);
     }
@@ -173,18 +114,19 @@ public abstract class Network {
      * @param json the json object to add to the POST request
      * @return the HTTP response, or null in case of an encoding error params
      */
-    public static HttpResponse postJsonRequest(final String uri, final JSONObject json) {
-        HttpPost request = new HttpPost(uri);
+    @Nullable
+    public static HttpResponse postJsonRequest(final String uri, final ObjectNode json) {
+        final HttpPost request = new HttpPost(uri);
         request.addHeader("Content-Type", "application/json; charset=utf-8");
         if (json != null) {
             try {
-                request.setEntity(new StringEntity(json.toString()));
-            } catch (UnsupportedEncodingException e) {
-                Log.e("postJsonRequest:JSON Entity: UnsupportedEncodingException");
+                request.setEntity(new StringEntity(json.toString(), CharEncoding.UTF_8));
+            } catch (final UnsupportedEncodingException e) {
+                Log.e("postJsonRequest:JSON Entity: UnsupportedEncodingException", e);
                 return null;
             }
         }
-        return doRepeatedRequests(request);
+        return doLogRequest(request);
     }
 
     /**
@@ -197,12 +139,13 @@ public abstract class Network {
      * @param file the file to include in the request
      * @return the HTTP response, or null in case of an encoding error param
      */
+    @Nullable
     public static HttpResponse postRequest(final String uri, final Parameters params,
             final String fileFieldName, final String fileContentType, final File file) {
         final MultipartEntity entity = new MultipartEntity();
         for (final NameValuePair param : params) {
             try {
-                entity.addPart(param.getName(), new StringBody(param.getValue(), CHARSET_UTF8));
+                entity.addPart(param.getName(), new StringBody(param.getValue(), TextUtils.CHARSET_UTF8));
             } catch (final UnsupportedEncodingException e) {
                 Log.e("Network.postRequest: unsupported encoding for parameter " + param.getName(), e);
                 return null;
@@ -214,7 +157,7 @@ public abstract class Network {
         request.setEntity(entity);
 
         addHeaders(request, null, null);
-        return doRepeatedRequests(request);
+        return doLogRequest(request);
     }
 
     /**
@@ -232,8 +175,10 @@ public abstract class Network {
      *            the cache file used to cache this query
      * @return the HTTP response, or null in case of an encoding error in a POST request arguments
      */
-    private static HttpResponse request(final String method, final String uri, final Parameters params, final Parameters headers, final File cacheFile) {
-        HttpRequestBase request;
+    @Nullable
+    private static HttpResponse request(final String method, final String uri,
+                                        @Nullable final Parameters params, @Nullable final Parameters headers, @Nullable final File cacheFile) {
+        final HttpRequestBase request;
         if (method.equals("GET")) {
             final String fullUri = params == null ? uri : Uri.parse(uri).buildUpon().encodedQuery(params.toString()).build().toString();
             request = new HttpGet(fullUri);
@@ -251,7 +196,7 @@ public abstract class Network {
 
         addHeaders(request, headers, cacheFile);
 
-        return doRepeatedRequests(request);
+        return doLogRequest(request);
     }
 
     /**
@@ -263,7 +208,7 @@ public abstract class Network {
      * @param cacheFile
      *            if non-null, the file to take ETag and If-Modified-Since information from
      */
-    private static void addHeaders(final HttpRequestBase request, final Parameters headers, final File cacheFile) {
+    private static void addHeaders(final HttpRequestBase request, @Nullable final Parameters headers, @Nullable final File cacheFile) {
         for (final NameValuePair header : Parameters.extend(Parameters.merge(headers, cacheHeaders(cacheFile)),
                 "Accept-Charset", "utf-8,iso-8859-1;q=0.8,utf-16;q=0.8,*;q=0.7",
                 "Accept-Language", "en-US,*;q=0.9",
@@ -271,58 +216,59 @@ public abstract class Network {
             request.setHeader(header.getName(), header.getValue());
         }
         request.getParams().setParameter(CoreProtocolPNames.USER_AGENT,
-                Settings.getUseNativeUa() ? Network.NATIVE_USER_AGENT : Network.PC_USER_AGENT);
+                Settings.getUseNativeUa() ? NATIVE_USER_AGENT : PC_USER_AGENT);
     }
 
     /**
-     * Retry a request for a few times.
+     * Perform an HTTP request and log it.
      *
      * @param request
      *            the request to try
      * @return
      *            the response, or null if there has been a failure
      */
-    private static HttpResponse doRepeatedRequests(final HttpRequestBase request) {
-        final String reqLogStr = request.getMethod() + " " + Network.hidePassword(request.getURI().toString());
+    @Nullable
+    private static HttpResponse doLogRequest(final HttpRequestBase request) {
+        if (!isNetworkConnected()) {
+            return null;
+        }
+
+        final String reqLogStr = request.getMethod() + " " + hidePassword(request.getURI().toString());
         Log.d(reqLogStr);
 
-        final HttpClient client = Network.getHttpClient();
-        for (int i = 0; i <= Network.NB_DOWNLOAD_RETRIES; i++) {
-            final long before = System.currentTimeMillis();
-            try {
-                final HttpResponse response = client.execute(request);
-                int status = response.getStatusLine().getStatusCode();
-                if (status == 200) {
-                    Log.d(status + Network.formatTimeSpan(before) + reqLogStr);
-                } else {
-                    Log.w(status + " [" + response.getStatusLine().getReasonPhrase() + "]" + Network.formatTimeSpan(before) + reqLogStr);
-                }
-                return response;
-            } catch (IOException e) {
-                final String timeSpan = Network.formatTimeSpan(before);
-                final String tries = (i + 1) + "/" + (Network.NB_DOWNLOAD_RETRIES + 1);
-                if (i == Network.NB_DOWNLOAD_RETRIES) {
-                    Log.w("Failure " + tries + timeSpan + reqLogStr + " (" + e.toString() + ")");
-                } else {
-                    Log.w("Failure " + tries + " (" + e.toString() + ")" + timeSpan + "- retrying " + reqLogStr);
-                }
+        final HttpClient client = getHttpClient();
+        final long before = System.currentTimeMillis();
+        try {
+            final HttpResponse response = client.execute(request);
+            final int status = response.getStatusLine().getStatusCode();
+            if (status == 200) {
+                Log.d(status + formatTimeSpan(before) + reqLogStr);
+            } else {
+                Log.w(status + " [" + response.getStatusLine().getReasonPhrase() + "]" + formatTimeSpan(before) + reqLogStr);
             }
+            return response;
+        } catch (final Exception e) {
+            final String timeSpan = formatTimeSpan(before);
+            Log.w("Failure" + timeSpan + reqLogStr + " (" + e.toString() + ")");
         }
 
         return null;
     }
 
-    private static Parameters cacheHeaders(final File cacheFile) {
+    @Nullable
+    private static Parameters cacheHeaders(@Nullable final File cacheFile) {
         if (cacheFile == null || !cacheFile.exists()) {
             return null;
         }
 
-        final String etag = LocalStorage.getSavedHeader(cacheFile, "etag");
+        final String etag = LocalStorage.getSavedHeader(cacheFile, LocalStorage.HEADER_ETAG);
         if (etag != null) {
+            // The ETag is a more robust check than a timestamp. If we have an ETag, it is enough
+            // to identify the right version of the resource.
             return new Parameters("If-None-Match", etag);
         }
 
-        final String lastModified = LocalStorage.getSavedHeader(cacheFile, "last-modified");
+        final String lastModified = LocalStorage.getSavedHeader(cacheFile, LocalStorage.HEADER_LAST_MODIFIED);
         if (lastModified != null) {
             return new Parameters("If-Modified-Since", lastModified);
         }
@@ -341,7 +287,8 @@ public abstract class Network {
      *            the name of the file storing the cached resource, or null not to use one
      * @return the HTTP response
      */
-    public static HttpResponse getRequest(final String uri, final Parameters params, final File cacheFile) {
+    @Nullable
+    public static HttpResponse getRequest(final String uri, @Nullable final Parameters params, @Nullable final File cacheFile) {
         return request("GET", uri, params, null, cacheFile);
     }
 
@@ -355,7 +302,8 @@ public abstract class Network {
      *            the parameters to add the the GET request
      * @return the HTTP response
      */
-    public static HttpResponse getRequest(final String uri, final Parameters params) {
+    @Nullable
+    public static HttpResponse getRequest(final String uri, @Nullable final Parameters params) {
         return request("GET", uri, params, null, null);
     }
 
@@ -370,7 +318,8 @@ public abstract class Network {
      *            the headers to add to the GET request
      * @return the HTTP response
      */
-    public static HttpResponse getRequest(final String uri, final Parameters params, final Parameters headers) {
+    @Nullable
+    public static HttpResponse getRequest(final String uri, @Nullable final Parameters params, @Nullable final Parameters headers) {
         return request("GET", uri, params, headers, null);
     }
 
@@ -381,6 +330,7 @@ public abstract class Network {
      *            the URI to request
      * @return the HTTP response
      */
+    @Nullable
     public static HttpResponse getRequest(final String uri) {
         return request("GET", uri, null, null, null);
     }
@@ -390,8 +340,12 @@ public abstract class Network {
         return " (" + (System.currentTimeMillis() - before) + " ms) ";
     }
 
-    static public boolean isSuccess(final HttpResponse response) {
+    static public boolean isSuccess(@Nullable final HttpResponse response) {
         return response != null && response.getStatusLine().getStatusCode() == 200;
+    }
+
+    static public boolean isPageNotFound(@Nullable final HttpResponse response) {
+        return response != null && response.getStatusLine().getStatusCode() == 404;
     }
 
     /**
@@ -401,25 +355,51 @@ public abstract class Network {
      * @param params the query parameters, or <code>null</code> if there are none
      * @return a JSON object if the request was successful and the body could be decoded, <code>null</code> otherwise
      */
-    public static JSONObject requestJSON(final String uri, final Parameters params) {
+    @Nullable
+    public static ObjectNode requestJSON(final String uri, @Nullable final Parameters params) {
         final HttpResponse response = request("GET", uri, params, new Parameters("Accept", "application/json, text/javascript, */*; q=0.01"), null);
-        final String responseData = Network.getResponseData(response, false);
+        final String responseData = getResponseData(response, false);
         if (responseData != null) {
             try {
-                return new JSONObject(responseData);
-            } catch (final JSONException e) {
-                Log.w("Network.requestJSON", e);
+                return (ObjectNode) JsonUtils.reader.readTree(responseData);
+            } catch (final IOException e) {
+                Log.w("requestJSON", e);
             }
         }
 
         return null;
     }
 
-    private static String getResponseDataNoError(final HttpResponse response, boolean replaceWhitespace) {
+    /**
+     * Get the input stream corresponding to a HTTP response if it exists.
+     *
+     * @param response a HTTP response, which can be null
+     * @return the input stream if the HTTP request is successful, <code>null</code> otherwise
+     */
+    @Nullable
+    public static InputStream getResponseStream(@Nullable final HttpResponse response) {
+        if (!isSuccess(response)) {
+            return null;
+        }
+        assert response != null;
+        final HttpEntity entity = response.getEntity();
+        if (entity == null) {
+            return null;
+        }
         try {
-            String data = EntityUtils.toString(response.getEntity(), CharEncoding.UTF_8);
-            return replaceWhitespace ? BaseUtils.replaceWhitespace(data) : data;
-        } catch (Exception e) {
+            return entity.getContent();
+        } catch (final IOException e) {
+            Log.e("Network.getResponseStream", e);
+            return null;
+        }
+    }
+
+    @Nullable
+    private static String getResponseDataNoError(final HttpResponse response, final boolean replaceWhitespace) {
+        try {
+            final String data = EntityUtils.toString(response.getEntity(), CharEncoding.UTF_8);
+            return replaceWhitespace ? TextUtils.replaceWhitespace(data) : data;
+        } catch (final Exception e) {
             Log.e("getResponseData", e);
             return null;
         }
@@ -428,65 +408,78 @@ public abstract class Network {
     /**
      * Get the body of a HTTP response.
      *
-     * {@link BaseUtils#replaceWhitespace(String)} will be called on the result
+     * {@link TextUtils#replaceWhitespace(String)} will be called on the result
      *
      * @param response a HTTP response, which can be null
      * @return the body if the response comes from a successful HTTP request, <code>null</code> otherwise
      */
-    public static String getResponseData(final HttpResponse response) {
-        return Network.getResponseData(response, true);
+    @Nullable
+    public static String getResponseData(@Nullable final HttpResponse response) {
+        return getResponseData(response, true);
+    }
+
+    @Nullable
+    public static String getResponseDataAlways(@Nullable final HttpResponse response) {
+        return response != null ? getResponseDataNoError(response, false) : null;
     }
 
     /**
      * Get the body of a HTTP response.
      *
      * @param response a HTTP response, which can be null
-     * @param replaceWhitespace <code>true</code> if {@link BaseUtils#replaceWhitespace(String)}
+     * @param replaceWhitespace <code>true</code> if {@link TextUtils#replaceWhitespace(String)}
      *                          should be called on the body
      * @return the body if the response comes from a successful HTTP request, <code>null</code> otherwise
      */
-    public static String getResponseData(final HttpResponse response, boolean replaceWhitespace) {
+    @Nullable
+    public static String getResponseData(@Nullable final HttpResponse response, final boolean replaceWhitespace) {
         if (!isSuccess(response)) {
             return null;
         }
+        assert response != null; // Caught above
         return getResponseDataNoError(response, replaceWhitespace);
     }
 
-    public static String rfc3986URLEncode(String text) {
-        return StringUtils.replace(Network.encode(text).replace("+", "%20"), "%7E", "~");
+    @Nullable
+    public static String rfc3986URLEncode(final String text) {
+        final String encoded = encode(text);
+        return encoded != null ? StringUtils.replace(encoded.replace("+", "%20"), "%7E", "~") : null;
     }
 
+    @Nullable
     public static String decode(final String text) {
         try {
             return URLDecoder.decode(text, CharEncoding.UTF_8);
-        } catch (UnsupportedEncodingException e) {
+        } catch (final UnsupportedEncodingException e) {
             Log.e("Network.decode", e);
         }
         return null;
     }
 
+    @Nullable
     public static String encode(final String text) {
         try {
             return URLEncoder.encode(text, CharEncoding.UTF_8);
-        } catch (UnsupportedEncodingException e) {
+        } catch (final UnsupportedEncodingException e) {
             Log.e("Network.encode", e);
         }
         return null;
     }
 
+    private static ConnectivityManager connectivityManager = null;
+
     /**
      * Checks if the device has network connection.
-     * 
-     * @param context
-     *            context of the application, cannot be null
-     * 
+     *
      * @return <code>true</code> if the device is connected to the network.
      */
-    public static boolean isNetworkConnected(Context context) {
-        ConnectivityManager conMan = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-        NetworkInfo activeNetwork = conMan.getActiveNetworkInfo();
-
-        return activeNetwork != null && activeNetwork.isConnected();
+    public static boolean isNetworkConnected() {
+        if (connectivityManager == null) {
+            // Concurrent assignment would not hurt
+            connectivityManager = (ConnectivityManager) CgeoApplication.getInstance().getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        }
+        final NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
+        return activeNetworkInfo != null && activeNetworkInfo.isConnected();
     }
 
 }

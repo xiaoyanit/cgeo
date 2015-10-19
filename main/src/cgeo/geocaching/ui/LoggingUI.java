@@ -1,12 +1,11 @@
 package cgeo.geocaching.ui;
 
+import cgeo.geocaching.DataStore;
 import cgeo.geocaching.Geocache;
 import cgeo.geocaching.LogEntry;
 import cgeo.geocaching.R;
-import cgeo.geocaching.Settings;
-import cgeo.geocaching.cgData;
-import cgeo.geocaching.activity.IAbstractActivity;
 import cgeo.geocaching.enumerations.LogType;
+import cgeo.geocaching.settings.Settings;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -18,7 +17,12 @@ import android.widget.ArrayAdapter;
 import java.util.ArrayList;
 import java.util.List;
 
-public class LoggingUI extends AbstractUIFactory {
+public final class LoggingUI extends AbstractUIFactory {
+
+    private LoggingUI() {
+        // utility class
+    }
+
     public static class LogTypeEntry {
         private final LogType logType;
         private final SpecialLogType specialLogType;
@@ -61,13 +65,13 @@ public class LoggingUI extends AbstractUIFactory {
         }
     }
 
-    public static boolean onMenuItemSelected(final MenuItem item, IAbstractActivity activity, Geocache cache) {
+    public static boolean onMenuItemSelected(final MenuItem item, final Activity activity, final Geocache cache) {
         switch (item.getItemId()) {
             case R.id.menu_log_visit:
                 cache.logVisit(activity);
                 return true;
             case R.id.menu_log_visit_offline:
-                showOfflineMenu(cache, (Activity) activity);
+                showOfflineMenu(cache, activity);
                 return true;
             default:
                 return false;
@@ -75,12 +79,12 @@ public class LoggingUI extends AbstractUIFactory {
     }
 
     private static void showOfflineMenu(final Geocache cache, final Activity activity) {
-        final LogEntry currentLog = cgData.loadLogOffline(cache.getGeocode());
+        final LogEntry currentLog = DataStore.loadLogOffline(cache.getGeocode());
         final LogType currentLogType = currentLog == null ? null : currentLog.type;
 
         final List<LogType> logTypes = cache.getPossibleLogTypes();
-        final ArrayList<LogTypeEntry> list = new ArrayList<LogTypeEntry>();
-        for (LogType logType : logTypes) {
+        final ArrayList<LogTypeEntry> list = new ArrayList<>();
+        for (final LogType logType : logTypes) {
             list.add(new LogTypeEntry(logType, null, logType == currentLogType));
         }
         if (cache.isLogOffline()) {
@@ -91,20 +95,20 @@ public class LoggingUI extends AbstractUIFactory {
         final AlertDialog.Builder builder = new AlertDialog.Builder(activity);
         builder.setTitle(R.string.cache_menu_visit_offline);
 
-        final ArrayAdapter<LogTypeEntry> adapter = new ArrayAdapter<LogTypeEntry>(activity, android.R.layout.select_dialog_item, list);
+        final ArrayAdapter<LogTypeEntry> adapter = new ArrayAdapter<>(activity, android.R.layout.select_dialog_item, list);
 
         builder.setAdapter(adapter, new DialogInterface.OnClickListener() {
             @Override
-            public void onClick(DialogInterface dialog, int item) {
+            public void onClick(final DialogInterface dialog, final int item) {
                 final LogTypeEntry logTypeEntry = adapter.getItem(item);
                 if (logTypeEntry.logType == null) {
                     switch (logTypeEntry.specialLogType) {
                         case LOG_CACHE:
-                            cache.logVisit((IAbstractActivity) activity);
+                            cache.logVisit(activity);
                             break;
 
                         case CLEAR_LOG:
-                            cgData.clearLogOffline(cache.getGeocode());
+                            cache.clearOfflineLog();
                             break;
                     }
                 } else {
@@ -117,16 +121,18 @@ public class LoggingUI extends AbstractUIFactory {
 
     }
 
-    public static void onPrepareOptionsMenu(Menu menu, Geocache cache) {
+    public static void onPrepareOptionsMenu(final Menu menu, final Geocache cache) {
+        if (cache == null) {
+            return;
+        }
         final MenuItem itemLog = menu.findItem(R.id.menu_log_visit);
         itemLog.setVisible(cache.supportsLogging() && !Settings.getLogOffline());
-        itemLog.setEnabled(Settings.isLogin());
 
         final MenuItem itemOffline = menu.findItem(R.id.menu_log_visit_offline);
         itemOffline.setVisible(cache.supportsLogging() && Settings.getLogOffline());
     }
 
-    public static void addMenuItems(Activity activity, Menu menu, Geocache cache) {
+    public static void addMenuItems(final Activity activity, final Menu menu, final Geocache cache) {
         activity.getMenuInflater().inflate(R.menu.logging_ui, menu);
         onPrepareOptionsMenu(menu, cache);
     }

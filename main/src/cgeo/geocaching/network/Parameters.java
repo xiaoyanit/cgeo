@@ -5,6 +5,8 @@ import ch.boye.httpclientandroidlib.client.utils.URLEncodedUtils;
 import ch.boye.httpclientandroidlib.message.BasicNameValuePair;
 
 import org.apache.commons.lang3.CharEncoding;
+import org.eclipse.jdt.annotation.NonNull;
+import org.eclipse.jdt.annotation.Nullable;
 
 import java.security.InvalidParameterException;
 import java.util.ArrayList;
@@ -81,7 +83,8 @@ public class Parameters extends ArrayList<NameValuePair> {
      *             if the number of key/values is unbalanced
      * @return the object itself if it is non-null, a new one otherwise
      */
-    public static Parameters extend(final Parameters params, final String... keyValues) {
+    @NonNull
+    public static Parameters extend(@Nullable final Parameters params, final String... keyValues) {
         return params == null ? new Parameters(keyValues) : params.put(keyValues);
     }
 
@@ -94,7 +97,8 @@ public class Parameters extends ArrayList<NameValuePair> {
      *            the object to merge from if non-null
      * @return params with extra data if params was non-null, extra otherwise
      */
-    public static Parameters merge(final Parameters params, final Parameters extra) {
+    @Nullable
+    public static Parameters merge(@Nullable final Parameters params, @Nullable final Parameters extra) {
         if (params == null) {
             return extra;
         }

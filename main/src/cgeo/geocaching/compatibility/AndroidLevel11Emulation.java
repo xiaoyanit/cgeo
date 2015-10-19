@@ -1,14 +1,11 @@
 package cgeo.geocaching.compatibility;
 
-import android.app.Activity;
+import android.widget.TextView;
 
-/**
- * implement level 11 API using older methods
- */
 public class AndroidLevel11Emulation implements AndroidLevel11Interface {
 
     @Override
-    public void invalidateOptionsMenu(final Activity activity) {
+    public void setTextIsSelectable(final TextView textView, final boolean selectable) {
         // do nothing
     }
 

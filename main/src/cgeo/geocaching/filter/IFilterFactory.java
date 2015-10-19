@@ -1,7 +1,10 @@
 package cgeo.geocaching.filter;
 
+import org.eclipse.jdt.annotation.NonNull;
+
 import java.util.List;
 
 interface IFilterFactory {
-    public List<? extends IFilter> getFilters();
+    @NonNull
+    List<? extends IFilter> getFilters();
 }

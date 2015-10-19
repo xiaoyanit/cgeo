@@ -1,13 +1,27 @@
 package cgeo.geocaching.apps;
 
+import cgeo.geocaching.CgeoApplication;
 import cgeo.geocaching.Geocache;
-import cgeo.geocaching.R;
 import cgeo.geocaching.Waypoint;
-import cgeo.geocaching.cgeoapplication;
 import cgeo.geocaching.enumerations.CacheSize;
 import cgeo.geocaching.enumerations.CacheType;
 import cgeo.geocaching.enumerations.WaypointType;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.utils.SynchronizedDateFormat;
 
+import org.eclipse.jdt.annotation.NonNull;
+import org.eclipse.jdt.annotation.Nullable;
+
+import android.app.Activity;
+import android.location.Location;
+
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import menion.android.locus.LocusDataStorageProvider;
 import menion.android.locus.addon.publiclib.DisplayData;
 import menion.android.locus.addon.publiclib.LocusUtils;
 import menion.android.locus.addon.publiclib.geoData.Point;
@@ -15,45 +29,31 @@ import menion.android.locus.addon.publiclib.geoData.PointGeocachingData;
 import menion.android.locus.addon.publiclib.geoData.PointGeocachingDataWaypoint;
 import menion.android.locus.addon.publiclib.geoData.PointsData;
 
-import android.app.Activity;
-import android.content.Intent;
-import android.location.Location;
-
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-
 /**
  * for the Locus API:
  *
  * @see <a href="http://forum.asamm.cz/viewtopic.php?f=29&t=767">Locus forum</a>
  */
 public abstract class AbstractLocusApp extends AbstractApp {
-    private static final String INTENT = Intent.ACTION_VIEW;
-    private static final SimpleDateFormat ISO8601DATE = new SimpleDateFormat("yyyy-MM-dd'T'", Locale.US);
+    private static final SynchronizedDateFormat ISO8601DATE = new SynchronizedDateFormat("yyyy-MM-dd'T'", Locale.US);
 
-    protected AbstractLocusApp() {
-        super(getString(R.string.caches_map_locus), INTENT);
-    }
-
-    protected AbstractLocusApp(final String text, final String intent) {
+    @SuppressFBWarnings("NP_METHOD_PARAMETER_TIGHTENS_ANNOTATION")
+    protected AbstractLocusApp(@NonNull final String text, @NonNull final String intent) {
         super(text, intent);
     }
 
     @Override
     public boolean isInstalled() {
-        return LocusUtils.isLocusAvailable(cgeoapplication.getInstance());
+        return LocusUtils.isLocusAvailable(CgeoApplication.getInstance());
     }
 
     /**
      * Display a list of caches / waypoints in Locus
-     * 
+     *
      * @param objectsToShow
      *            which caches/waypoints to show
      * @param withCacheWaypoints
      *            Whether to give waypoints of caches to Locus or not
-     * @param activity
      */
     protected static boolean showInLocus(final List<?> objectsToShow, final boolean withCacheWaypoints, final boolean export,
             final Activity activity) {
@@ -63,7 +63,7 @@ public abstract class AbstractLocusApp extends AbstractApp {
 
         final boolean withCacheDetails = objectsToShow.size() < 200;
         final PointsData pd = new PointsData("c:geo");
-        for (Object o : objectsToShow) {
+        for (final Object o : objectsToShow) {
             Point p = null;
             // get icon and Point
             if (o instanceof Geocache) {
@@ -83,7 +83,7 @@ public abstract class AbstractLocusApp extends AbstractApp {
         if (pd.getPoints().size() <= 1000) {
             DisplayData.sendData(activity, pd, export);
         } else {
-            final ArrayList<PointsData> data = new ArrayList<PointsData>();
+            final ArrayList<PointsData> data = new ArrayList<>();
             data.add(pd);
             DisplayData.sendDataCursor(activity, data,
                     "content://" + LocusDataStorageProvider.class.getCanonicalName().toLowerCase(Locale.US),
@@ -96,7 +96,6 @@ public abstract class AbstractLocusApp extends AbstractApp {
     /**
      * This method constructs a <code>Point</code> for displaying in Locus
      *
-     * @param cache
      * @param withWaypoints
      *            whether to give waypoints to Locus or not
      * @param withCacheDetails
@@ -104,7 +103,8 @@ public abstract class AbstractLocusApp extends AbstractApp {
      *            should be false for all if more then 200 Caches are transferred
      * @return null, when the <code>Point</code> could not be constructed
      */
-    private static Point getCachePoint(Geocache cache, boolean withWaypoints, boolean withCacheDetails) {
+    @Nullable
+    private static Point getCachePoint(final Geocache cache, final boolean withWaypoints, final boolean withCacheDetails) {
         if (cache == null || cache.getCoords() == null) {
             return null;
         }
@@ -125,16 +125,17 @@ public abstract class AbstractLocusApp extends AbstractApp {
         pg.premiumOnly = cache.isPremiumMembersOnly();
         pg.name = cache.getName();
         pg.placedBy = cache.getOwnerDisplayName();
-        if (cache.getHiddenDate() != null) {
-            pg.hidden = ISO8601DATE.format(cache.getHiddenDate().getTime());
+        final Date hiddenDate = cache.getHiddenDate();
+        if (hiddenDate != null) {
+            pg.hidden = ISO8601DATE.format(hiddenDate);
         }
-        int locusId = toLocusType(cache.getType());
-        if (locusId != NO_LOCUS_ID) {
-            pg.type = locusId;
+        final int type = toLocusType(cache.getType());
+        if (type != NO_LOCUS_ID) {
+            pg.type = type;
         }
-        locusId = toLocusSize(cache.getSize());
-        if (locusId != NO_LOCUS_ID) {
-            pg.container = locusId;
+        final int container = toLocusSize(cache.getSize());
+        if (container != NO_LOCUS_ID) {
+            pg.container = container;
         }
         if (cache.getDifficulty() > 0) {
             pg.difficulty = cache.getDifficulty();
@@ -145,20 +146,26 @@ public abstract class AbstractLocusApp extends AbstractApp {
         pg.found = cache.isFound();
 
         if (withWaypoints && cache.hasWaypoints()) {
-            pg.waypoints = new ArrayList<PointGeocachingDataWaypoint>();
-            for (Waypoint waypoint : cache.getWaypoints()) {
-                if (waypoint == null || waypoint.getCoords() == null) {
+            pg.waypoints = new ArrayList<>();
+            for (final Waypoint waypoint : cache.getWaypoints()) {
+                if (waypoint == null) {
                     continue;
                 }
-                PointGeocachingDataWaypoint wp = new PointGeocachingDataWaypoint();
-                wp.code = waypoint.getGeocode();
+
+                final PointGeocachingDataWaypoint wp = new PointGeocachingDataWaypoint();
+                wp.code = waypoint.getLookup();
                 wp.name = waypoint.getName();
-                String locusWpId = toLocusWaypoint(waypoint.getWaypointType());
+                wp.description = waypoint.getNote();
+                final String locusWpId = toLocusWaypoint(waypoint.getWaypointType());
                 if (locusWpId != null) {
                     wp.type = locusWpId;
                 }
-                wp.lat = waypoint.getCoords().getLatitude();
-                wp.lon = waypoint.getCoords().getLongitude();
+
+                final Geopoint waypointCoords = waypoint.getCoords();
+                if (waypointCoords != null) {
+                    wp.lat = waypointCoords.getLatitude();
+                    wp.lon = waypointCoords.getLongitude();
+                }
                 pg.waypoints.add(wp);
             }
         }
@@ -179,18 +186,22 @@ public abstract class AbstractLocusApp extends AbstractApp {
     /**
      * This method constructs a <code>Point</code> for displaying in Locus
      *
-     * @param waypoint
      * @return null, when the <code>Point</code> could not be constructed
      */
-    private static Point getWaypointPoint(Waypoint waypoint) {
-        if (waypoint == null || waypoint.getCoords() == null) {
+    @Nullable
+    private static Point getWaypointPoint(final Waypoint waypoint) {
+        if (waypoint == null) {
+            return null;
+        }
+        final Geopoint coordinates = waypoint.getCoords();
+        if (coordinates == null) {
             return null;
         }
 
         // create one simple point with location
         final Location loc = new Location("cgeo");
-        loc.setLatitude(waypoint.getCoords().getLatitude());
-        loc.setLongitude(waypoint.getCoords().getLongitude());
+        loc.setLatitude(coordinates.getLatitude());
+        loc.setLongitude(coordinates.getLongitude());
 
         final Point p = new Point(waypoint.getName(), loc);
         p.setDescription("<a href=\"" + waypoint.getUrl() + "\">"
@@ -253,6 +264,7 @@ public abstract class AbstractLocusApp extends AbstractApp {
         }
     }
 
+    @Nullable
     private static String toLocusWaypoint(final WaypointType wt) {
         switch (wt) {
             case FINAL:
@@ -273,5 +285,4 @@ public abstract class AbstractLocusApp extends AbstractApp {
                 return null;
         }
     }
-
 }

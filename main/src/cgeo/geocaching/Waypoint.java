@@ -1,48 +1,43 @@
 package cgeo.geocaching;
 
+import cgeo.geocaching.enumerations.LoadFlags;
 import cgeo.geocaching.enumerations.WaypointType;
-import cgeo.geocaching.geopoint.Geopoint;
+import cgeo.geocaching.location.Geopoint;
+import cgeo.geocaching.utils.MatcherWrapper;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.NonNull;
+import org.eclipse.jdt.annotation.Nullable;
 
-import android.content.res.Resources;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.LayerDrawable;
-import android.widget.TextView;
-
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
-public class Waypoint implements IWaypoint, Comparable<Waypoint> {
+public class Waypoint implements IWaypoint {
 
     public static final String PREFIX_OWN = "OWN";
     private static final int ORDER_UNDEFINED = -2;
+    private static final Pattern PATTERN_COORDS = Pattern.compile("\\b[nNsS]\\s*\\d");
     private int id = -1;
     private String geocode = "geocode";
     private WaypointType waypointType = WaypointType.WAYPOINT;
     private String prefix = "";
     private String lookup = "";
     private String name = "";
-    private String latlon = "";
     private Geopoint coords = null;
     private String note = "";
     private int cachedOrder = ORDER_UNDEFINED;
     private boolean own = false;
     private boolean visited = false;
-    // preliminary default for mdpi screens
-    private static int VISITED_INSET = 7;
-
-    public static void initializeScale() {
-        // Calculate visited inset based on screen density
-        VISITED_INSET = (int) (6.6f * cgeoapplication.getInstance().getResources().getDisplayMetrics().density + 0.5f);
-    }
 
     /**
      * require name and type for every waypoint
      *
-     * @param name
-     * @param type
      */
     public Waypoint(final String name, final WaypointType type, final boolean own) {
         this.name = name;
@@ -53,28 +48,11 @@ public class Waypoint implements IWaypoint, Comparable<Waypoint> {
     /**
      * copy constructor
      *
-     * @param other
      */
     public Waypoint(final Waypoint other) {
         merge(other);
         this.waypointType = other.waypointType;
         id = -1;
-    }
-
-    public void setIcon(final Resources res, final TextView nameView) {
-        Drawable icon;
-        if (visited) {
-            LayerDrawable ld = new LayerDrawable(new Drawable[] {
-                    res.getDrawable(waypointType.markerId),
-                    res.getDrawable(R.drawable.tick) });
-            ld.setLayerInset(0, 0, 0, VISITED_INSET, VISITED_INSET);
-            ld.setLayerInset(1, VISITED_INSET, VISITED_INSET, 0, 0);
-            icon = ld;
-        } else {
-            icon = res.getDrawable(waypointType.markerId);
-        }
-        final Drawable fIcon = icon;
-        nameView.setCompoundDrawablesWithIntrinsicBounds(fIcon, null, null, null);
     }
 
     public void merge(final Waypoint old) {
@@ -86,9 +64,6 @@ public class Waypoint implements IWaypoint, Comparable<Waypoint> {
         }
         if (StringUtils.isBlank(name)) {
             setName(old.name);
-        }
-        if (StringUtils.isBlank(latlon) || latlon.startsWith("?")) { // there are waypoints containing "???"
-            latlon = old.latlon;
         }
         if (coords == null) {
             coords = old.coords;
@@ -109,7 +84,7 @@ public class Waypoint implements IWaypoint, Comparable<Waypoint> {
 
     public static void mergeWayPoints(final List<Waypoint> newPoints, final List<Waypoint> oldPoints, final boolean forceMerge) {
         // Build a map of new waypoints for faster subsequent lookups
-        final Map<String, Waypoint> newPrefixes = new HashMap<String, Waypoint>(newPoints.size());
+        final Map<String, Waypoint> newPrefixes = new HashMap<>(newPoints.size());
         for (final Waypoint waypoint : newPoints) {
             newPrefixes.put(waypoint.getPrefix(), waypoint);
         }
@@ -135,22 +110,26 @@ public class Waypoint implements IWaypoint, Comparable<Waypoint> {
     }
 
     private int computeOrder() {
+        // first parking, then trailhead (as start of the journey)
+        // puzzles, stages, waypoints can all be mixed
+        // at last the final and the original coordinates of the final
         switch (waypointType) {
             case PARKING:
                 return -1;
             case TRAILHEAD:
                 return 1;
-            case STAGE: // puzzles and stages with same value
-                return 2;
+            case STAGE:
             case PUZZLE:
+            case WAYPOINT:
                 return 2;
             case FINAL:
                 return 3;
-            case OWN:
+            case ORIGINAL:
                 return 4;
-            default:
-                return 0;
+            case OWN:
+                return 5;
         }
+        return 0;
     }
 
     private int order() {
@@ -160,22 +139,18 @@ public class Waypoint implements IWaypoint, Comparable<Waypoint> {
         return cachedOrder;
     }
 
-    @Override
-    public int compareTo(Waypoint other) {
-        return order() - other.order();
-    }
-
     public String getPrefix() {
         return prefix;
     }
 
-    public void setPrefix(String prefix) {
+    public void setPrefix(final String prefix) {
         this.prefix = prefix;
         cachedOrder = ORDER_UNDEFINED;
     }
 
+    @NonNull
     public String getUrl() {
-        return "http://www.geocaching.com//seek/cache_details.aspx?wp=" + geocode;
+        return "http://www.geocaching.com/seek/cache_details.aspx?wp=" + geocode;
     }
 
     @Override
@@ -183,7 +158,7 @@ public class Waypoint implements IWaypoint, Comparable<Waypoint> {
         return id;
     }
 
-    public void setId(int id) {
+    public void setId(final int id) {
         this.id = id;
     }
 
@@ -192,7 +167,7 @@ public class Waypoint implements IWaypoint, Comparable<Waypoint> {
         return geocode;
     }
 
-    public void setGeocode(String geocode) {
+    public void setGeocode(final String geocode) {
         this.geocode = StringUtils.upperCase(geocode);
     }
 
@@ -205,7 +180,7 @@ public class Waypoint implements IWaypoint, Comparable<Waypoint> {
         return lookup;
     }
 
-    public void setLookup(String lookup) {
+    public void setLookup(final String lookup) {
         this.lookup = lookup;
     }
 
@@ -214,24 +189,17 @@ public class Waypoint implements IWaypoint, Comparable<Waypoint> {
         return name;
     }
 
-    public void setName(String name) {
+    public void setName(final String name) {
         this.name = name;
     }
 
-    public String getLatlon() {
-        return latlon;
-    }
-
-    public void setLatlon(String latlon) {
-        this.latlon = latlon;
-    }
-
+    @Nullable
     @Override
     public Geopoint getCoords() {
         return coords;
     }
 
-    public void setCoords(Geopoint coords) {
+    public void setCoords(final Geopoint coords) {
         this.coords = coords;
     }
 
@@ -239,7 +207,7 @@ public class Waypoint implements IWaypoint, Comparable<Waypoint> {
         return note;
     }
 
-    public void setNote(String note) {
+    public void setNote(final String note) {
         this.note = note;
     }
 
@@ -262,7 +230,7 @@ public class Waypoint implements IWaypoint, Comparable<Waypoint> {
         return "waypoint";
     }
 
-    public void setVisited(boolean visited) {
+    public void setVisited(final boolean visited) {
         this.visited = visited;
     }
 
@@ -278,5 +246,88 @@ public class Waypoint implements IWaypoint, Comparable<Waypoint> {
         hash ^= waypointType.markerId;
         return (int) hash;
     }
+
+    /**
+     * Sort waypoints by their probable order (e.g. parking first, final last).
+     */
+    public static final Comparator<? super Waypoint> WAYPOINT_COMPARATOR = new Comparator<Waypoint>() {
+
+        @Override
+        public int compare(final Waypoint left, final Waypoint right) {
+            return left.order() - right.order();
+        }
+    };
+
+    /**
+     * Delegates the creation of the waypoint-id for gpx-export to the waypoint
+     *
+     */
+    public String getGpxId() {
+
+        String gpxId = prefix;
+
+        if (StringUtils.isNotBlank(geocode)) {
+            final Geocache cache = DataStore.loadCache(geocode, LoadFlags.LOAD_CACHE_OR_DB);
+            if (cache != null) {
+                gpxId = cache.getWaypointGpxId(prefix);
+            }
+        }
+
+        return gpxId;
+    }
+
+    /**
+     * Detect coordinates in the personal note and convert them to user defined waypoints. Works by rule of thumb.
+     *
+     * @param initialNote Note content
+     * @return a collection of found waypoints
+     */
+    public static Collection<Waypoint> parseWaypointsFromNote(@NonNull final String initialNote) {
+        final List<Waypoint> waypoints = new LinkedList<>();
+
+        String note = initialNote;
+        MatcherWrapper matcher = new MatcherWrapper(PATTERN_COORDS, note);
+        int count = 1;
+        while (matcher.find()) {
+            try {
+                final Geopoint point = new Geopoint(note.substring(matcher.start()));
+                // Coords must have non zero latitude and longitude and at least one part shall have fractional degrees.
+                if (point.getLatitudeE6() != 0 && point.getLongitudeE6() != 0 &&
+                        ((point.getLatitudeE6() % 1000) != 0 || (point.getLongitudeE6() % 1000) != 0)) {
+                    final String name = CgeoApplication.getInstance().getString(R.string.cache_personal_note) + " " + count;
+                    final String potentialWaypointType = note.substring(Math.max(0, matcher.start() - 15));
+                    final Waypoint waypoint = new Waypoint(name, parseWaypointType(potentialWaypointType), true);
+                    waypoint.setCoords(point);
+                    waypoints.add(waypoint);
+                    count++;
+                }
+            } catch (final Geopoint.ParseException ignored) {
+            }
+
+            note = note.substring(matcher.start() + 1);
+            matcher = new MatcherWrapper(PATTERN_COORDS, note);
+        }
+        return waypoints;
+    }
+
+    /**
+     * Detect waypoint types in the personal note text. It works by rule of thumb only.
+     */
+    private static WaypointType parseWaypointType(final String input) {
+        final String lowerInput = StringUtils.substring(input, 0, 20).toLowerCase(Locale.getDefault());
+        for (final WaypointType wpType : WaypointType.values()) {
+            if (lowerInput.contains(wpType.getL10n().toLowerCase(Locale.getDefault()))) {
+                return wpType;
+            }
+            if (lowerInput.contains(wpType.id)) {
+                return wpType;
+            }
+            if (lowerInput.contains(wpType.name().toLowerCase(Locale.US))) {
+                return wpType;
+            }
+        }
+        return WaypointType.WAYPOINT;
+    }
+
 
 }

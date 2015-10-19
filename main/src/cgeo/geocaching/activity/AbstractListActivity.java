@@ -1,20 +1,19 @@
 package cgeo.geocaching.activity;
 
-import cgeo.geocaching.cgeoapplication;
-import cgeo.geocaching.compatibility.Compatibility;
+import cgeo.geocaching.CgeoApplication;
+import cgeo.geocaching.network.AndroidBeam;
 
 import android.content.res.Resources;
-import android.graphics.drawable.Drawable;
 import android.os.Bundle;
-import android.support.v4.app.FragmentListActivity;
-import android.view.View;
+import android.view.MenuItem;
+import android.view.Window;
 
-public abstract class AbstractListActivity extends FragmentListActivity implements
+public abstract class AbstractListActivity extends ActionBarListActivity implements
         IAbstractActivity {
 
     private boolean keepScreenOn = false;
 
-    protected cgeoapplication app = null;
+    protected CgeoApplication app = null;
     protected Resources res = null;
 
     protected AbstractListActivity() {
@@ -23,11 +22,6 @@ public abstract class AbstractListActivity extends FragmentListActivity implemen
 
     protected AbstractListActivity(final boolean keepScreenOn) {
         this.keepScreenOn = keepScreenOn;
-    }
-
-    @Override
-    final public void goHome(View view) {
-        ActivityMixin.goHome(this);
     }
 
     final public void showProgress(final boolean show) {
@@ -39,36 +33,43 @@ public abstract class AbstractListActivity extends FragmentListActivity implemen
     }
 
     @Override
-    public final void showToast(String text) {
+    public final void showToast(final String text) {
         ActivityMixin.showToast(this, text);
     }
 
     @Override
-    public final void showShortToast(String text) {
+    public final void showShortToast(final String text) {
         ActivityMixin.showShortToast(this, text);
     }
 
     @Override
-    public final void helpDialog(final String title, final String message) {
-        ActivityMixin.helpDialog(this, title, message, null);
+    public void onCreate(final Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        supportRequestWindowFeature(Window.FEATURE_INDETERMINATE_PROGRESS);
+
+        initializeCommonFields();
+        initUpAction();
+        AndroidBeam.disable(this);
     }
 
-    public final void helpDialog(final String title, final String message, final Drawable icon) {
-        ActivityMixin.helpDialog(this, title, message, icon);
+    protected void initUpAction() {
+        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
     }
 
     @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        initializeCommonFields();
+    public boolean onOptionsItemSelected(final MenuItem item) {
+        if (item.getItemId()== android.R.id.home) {
+            return ActivityMixin.navigateUp(this);
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     private void initializeCommonFields() {
         // init
         res = this.getResources();
-        app = (cgeoapplication) this.getApplication();
+        app = (CgeoApplication) this.getApplication();
 
-        ActivityMixin.keepScreenOn(this, keepScreenOn);
+        ActivityMixin.onCreate(this, keepScreenOn);
     }
 
     final protected void setTitle(final String title) {
@@ -77,10 +78,10 @@ public abstract class AbstractListActivity extends FragmentListActivity implemen
 
     @Override
     public void invalidateOptionsMenuCompatible() {
-        Compatibility.invalidateOptionsMenu(this);
+        ActivityMixin.invalidateOptionsMenu(this);
     }
 
-    public void onCreate(Bundle savedInstanceState, int resourceLayoutID) {
+    public void onCreate(final Bundle savedInstanceState, final int resourceLayoutID) {
         super.onCreate(savedInstanceState);
         initializeCommonFields();
 
@@ -89,10 +90,22 @@ public abstract class AbstractListActivity extends FragmentListActivity implemen
     }
 
     @Override
-    public void setContentView(int layoutResID) {
+    public void setContentView(final int layoutResID) {
         super.setContentView(layoutResID);
 
         // initialize action bar title with activity title
         ActivityMixin.setTitle(this, getTitle());
     }
+
+    @Override
+    public final void presentShowcase() {
+        ActivityMixin.presentShowcase(this);
+    }
+
+    @Override
+    public ShowcaseViewBuilder getShowcase() {
+        // do nothing by default
+        return null;
+    }
+
 }

@@ -1,21 +1,26 @@
 package cgeo.geocaching;
 
-import butterknife.InjectView;
-import butterknife.Views;
+import butterknife.Bind;
+import butterknife.ButterKnife;
 
-import cgeo.geocaching.activity.AbstractActivity;
-import cgeo.geocaching.compatibility.Compatibility;
-import cgeo.geocaching.utils.ImageHelper;
+import cgeo.geocaching.activity.AbstractActionBarActivity;
+import cgeo.geocaching.files.LocalStorage;
+import cgeo.geocaching.settings.Settings;
+import cgeo.geocaching.ui.dialog.Dialogs;
+import cgeo.geocaching.utils.ImageUtils;
 import cgeo.geocaching.utils.Log;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.Nullable;
 
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.drawable.BitmapDrawable;
 import android.net.Uri;
+import android.os.AsyncTask;
+import android.os.Build;
+import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.provider.MediaStore.MediaColumns;
@@ -28,71 +33,60 @@ import android.widget.ImageView;
 import android.widget.Spinner;
 
 import java.io.File;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 
-public class ImageSelectActivity extends AbstractActivity {
+public class ImageSelectActivity extends AbstractActionBarActivity {
 
-    @InjectView(R.id.caption) protected EditText captionView;
-    @InjectView(R.id.description) protected EditText descriptionView;
-    @InjectView(R.id.logImageScale) protected Spinner scaleView;
-    @InjectView(R.id.camera) protected Button cameraButton;
-    @InjectView(R.id.stored) protected Button storedButton;
-    @InjectView(R.id.save) protected Button saveButton;
-    @InjectView(R.id.cancel) protected Button clearButton;
-    @InjectView(R.id.image_preview) protected ImageView imagePreview;
+    @Bind(R.id.caption) protected EditText captionView;
+    @Bind(R.id.description) protected EditText descriptionView;
+    @Bind(R.id.logImageScale) protected Spinner scaleView;
+    @Bind(R.id.camera) protected Button cameraButton;
+    @Bind(R.id.stored) protected Button storedButton;
+    @Bind(R.id.save) protected Button saveButton;
+    @Bind(R.id.cancel) protected Button clearButton;
+    @Bind(R.id.image_preview) protected ImageView imagePreview;
 
-    static final String EXTRAS_CAPTION = "caption";
-    static final String EXTRAS_DESCRIPTION = "description";
-    static final String EXTRAS_URI_AS_STRING = "uri";
-    static final String EXTRAS_SCALE = "scale";
-
-    private static final String SAVED_STATE_IMAGE_CAPTION = "cgeo.geocaching.saved_state_image_caption";
-    private static final String SAVED_STATE_IMAGE_DESCRIPTION = "cgeo.geocaching.saved_state_image_description";
-    private static final String SAVED_STATE_IMAGE_URI = "cgeo.geocaching.saved_state_image_uri";
+    private static final String SAVED_STATE_IMAGE = "cgeo.geocaching.saved_state_image";
     private static final String SAVED_STATE_IMAGE_SCALE = "cgeo.geocaching.saved_state_image_scale";
 
     private static final int SELECT_NEW_IMAGE = 1;
     private static final int SELECT_STORED_IMAGE = 2;
 
     // Data to be saved while reconfiguring
-    private String imageCaption;
-    private String imageDescription;
+    private Image image;
     private int scaleChoiceIndex;
-    private Uri imageUri;
 
     @Override
     public void onCreate(final Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState, R.layout.visit_image);
-        Views.inject(this);
+        onCreate(savedInstanceState, R.layout.imageselect_activity);
+        ButterKnife.bind(this);
 
         scaleChoiceIndex = Settings.getLogImageScale();
-        imageCaption = "";
-        imageDescription = "";
-        imageUri = Uri.EMPTY;
 
         // Get parameters from intent and basic cache information from database
         final Bundle extras = getIntent().getExtras();
         if (extras != null) {
-            imageCaption = extras.getString(EXTRAS_CAPTION);
-            imageDescription = extras.getString(EXTRAS_DESCRIPTION);
-            imageUri = Uri.parse(extras.getString(EXTRAS_URI_AS_STRING));
-            scaleChoiceIndex = extras.getInt(EXTRAS_SCALE, scaleChoiceIndex);
+            image = extras.getParcelable(Intents.EXTRA_IMAGE);
+            scaleChoiceIndex = extras.getInt(Intents.EXTRA_SCALE, scaleChoiceIndex);
         }
 
         // Restore previous state
         if (savedInstanceState != null) {
-            imageCaption = savedInstanceState.getString(SAVED_STATE_IMAGE_CAPTION);
-            imageDescription = savedInstanceState.getString(SAVED_STATE_IMAGE_DESCRIPTION);
-            imageUri = Uri.parse(savedInstanceState.getString(SAVED_STATE_IMAGE_URI));
+            image = savedInstanceState.getParcelable(SAVED_STATE_IMAGE);
             scaleChoiceIndex = savedInstanceState.getInt(SAVED_STATE_IMAGE_SCALE);
+        }
+
+        if (image == null) {
+            image = Image.NONE;
         }
 
         cameraButton.setOnClickListener(new View.OnClickListener() {
 
             @Override
-            public void onClick(View view) {
+            public void onClick(final View view) {
                 selectImageFromCamera();
             }
         });
@@ -100,36 +94,38 @@ public class ImageSelectActivity extends AbstractActivity {
         storedButton.setOnClickListener(new View.OnClickListener() {
 
             @Override
-            public void onClick(View view) {
+            public void onClick(final View view) {
                 selectImageFromStorage();
             }
         });
 
-        if (StringUtils.isNotBlank(imageCaption)) {
-            captionView.setText(imageCaption);
+        if (image.hasTitle()) {
+            captionView.setText(image.getTitle());
+            Dialogs.moveCursorToEnd(captionView);
         }
 
-        if (StringUtils.isNotBlank(imageDescription)) {
-            descriptionView.setText(imageDescription);
+        if (image.hasDescription()) {
+            descriptionView.setText(image.getDescription());
+            Dialogs.moveCursorToEnd(captionView);
         }
 
         scaleView.setSelection(scaleChoiceIndex);
         scaleView.setOnItemSelectedListener(new OnItemSelectedListener() {
             @Override
-            public void onItemSelected(AdapterView<?> arg0, View arg1, int arg2, long arg3) {
+            public void onItemSelected(final AdapterView<?> arg0, final View arg1, final int arg2, final long arg3) {
                 scaleChoiceIndex = scaleView.getSelectedItemPosition();
                 Settings.setLogImageScale(scaleChoiceIndex);
             }
 
             @Override
-            public void onNothingSelected(AdapterView<?> arg0) {
+            public void onNothingSelected(final AdapterView<?> arg0) {
             }
         });
 
         saveButton.setOnClickListener(new View.OnClickListener() {
 
             @Override
-            public void onClick(View v) {
+            public void onClick(final View v) {
                 saveImageInfo(true);
             }
         });
@@ -137,7 +133,7 @@ public class ImageSelectActivity extends AbstractActivity {
         clearButton.setOnClickListener(new View.OnClickListener() {
 
             @Override
-            public void onClick(View v) {
+            public void onClick(final View v) {
                 saveImageInfo(false);
             }
         });
@@ -149,61 +145,80 @@ public class ImageSelectActivity extends AbstractActivity {
     protected void onSaveInstanceState(final Bundle outState) {
         super.onSaveInstanceState(outState);
         syncEditTexts();
-        outState.putString(SAVED_STATE_IMAGE_CAPTION, imageCaption);
-        outState.putString(SAVED_STATE_IMAGE_DESCRIPTION, imageDescription);
-        outState.putString(SAVED_STATE_IMAGE_URI, imageUri != null ? imageUri.getPath() : StringUtils.EMPTY);
+        outState.putParcelable(SAVED_STATE_IMAGE, image);
         outState.putInt(SAVED_STATE_IMAGE_SCALE, scaleChoiceIndex);
     }
 
-    public void saveImageInfo(boolean saveInfo) {
+    public void saveImageInfo(final boolean saveInfo) {
         if (saveInfo) {
-            String filename = writeScaledImage(imageUri.getPath());
-            imageUri = Uri.parse(filename);
-            Intent intent = new Intent();
-            syncEditTexts();
-            intent.putExtra(EXTRAS_CAPTION, imageCaption);
-            intent.putExtra(EXTRAS_DESCRIPTION, imageDescription);
-            intent.putExtra(EXTRAS_URI_AS_STRING, imageUri.toString());
-            intent.putExtra(EXTRAS_SCALE, scaleChoiceIndex);
+            new AsyncTask<Void, Void, String>() {
+                @Override
+                protected String doInBackground(final Void... params) {
+                    return writeScaledImage(image.getPath());
+                }
 
-            setResult(RESULT_OK, intent);
+                @Override
+                protected void onPostExecute(final String filename) {
+                    if (filename != null) {
+                        image = new Image.Builder().setUrl(filename).build();
+                        final Intent intent = new Intent();
+                        syncEditTexts();
+                        intent.putExtra(Intents.EXTRA_IMAGE, image);
+                        intent.putExtra(Intents.EXTRA_SCALE, scaleChoiceIndex);
+                        setResult(RESULT_OK, intent);
+                    } else {
+                        showToast(res.getString(R.string.err_select_logimage_failed));
+                        setResult(RESULT_CANCELED);
+                    }
+                    finish();
+                }
+            }.execute();
         } else {
             setResult(RESULT_CANCELED);
+            finish();
         }
-
-        finish();
     }
 
     private void syncEditTexts() {
-        imageCaption = captionView.getText().toString();
-        imageDescription = descriptionView.getText().toString();
+        image = new Image.Builder()
+                .setUrl(image.uri)
+                .setTitle(captionView.getText().toString())
+                .setDescription(descriptionView.getText().toString())
+                .build();
+
         scaleChoiceIndex = scaleView.getSelectedItemPosition();
     }
 
     private void selectImageFromCamera() {
         // create Intent to take a picture and return control to the calling application
-        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        final Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
 
-        imageUri = getOutputImageFileUri(); // create a file to save the image
+        final Uri imageUri = ImageUtils.getOutputImageFileUri();
         if (imageUri == null) {
             showFailure();
             return;
         }
-        intent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri); // set the image file name
+        image = new Image.Builder().setUrl(imageUri).build();
+
+        if (image.isEmpty()) {
+            showFailure();
+            return;
+        }
+        intent.putExtra(MediaStore.EXTRA_OUTPUT, image.getUri()); // set the image file name
 
         // start the image capture Intent
         startActivityForResult(intent, SELECT_NEW_IMAGE);
     }
 
     private void selectImageFromStorage() {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        final Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("image/jpeg");
 
         startActivityForResult(Intent.createChooser(intent, "Select Image"), SELECT_STORED_IMAGE);
     }
 
     @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+    protected void onActivityResult(final int requestCode, final int resultCode, final Intent data) {
         if (resultCode == RESULT_CANCELED) {
             // User cancelled the image capture
             showToast(getResources().getString(R.string.info_select_logimage_cancelled));
@@ -216,42 +231,68 @@ public class ImageSelectActivity extends AbstractActivity {
             return;
         }
 
+        // null is an acceptable result if the image has been placed in the imageUri file by the
+        // camera application.
         if (data != null) {
-            Uri selectedImage = data.getData();
-            String[] filePathColumn = { MediaColumns.DATA };
+            final Uri selectedImage = data.getData();
+            // In principal can selectedImage be null
+            if (selectedImage != null) {
+                if (Build.VERSION.SDK_INT < VERSION_CODES.KITKAT) {
+                    final String[] filePathColumn = { MediaColumns.DATA };
 
-            Cursor cursor = null;
-            try {
-                cursor = getContentResolver().query(selectedImage, filePathColumn, null, null, null);
-                if (cursor == null) {
-                    showFailure();
-                    return;
-                }
-                cursor.moveToFirst();
+                    Cursor cursor = null;
+                    try {
+                        cursor = getContentResolver().query(selectedImage, filePathColumn, null, null, null);
+                        if (cursor == null) {
+                            showFailure();
+                            return;
+                        }
+                        cursor.moveToFirst();
 
-                int columnIndex = cursor.getColumnIndex(filePathColumn[0]);
-                String filePath = cursor.getString(columnIndex);
-                if (StringUtils.isBlank(filePath)) {
-                    showFailure();
-                    return;
+                        final int columnIndex = cursor.getColumnIndex(filePathColumn[0]);
+                        final String filePath = cursor.getString(columnIndex);
+                        if (StringUtils.isBlank(filePath)) {
+                            showFailure();
+                            return;
+                        }
+                        image = new Image.Builder().setUrl(filePath).build();
+                    } catch (final Exception e) {
+                        Log.e("ImageSelectActivity.onActivityResult", e);
+                        showFailure();
+                    } finally {
+                        if (cursor != null) {
+                            cursor.close();
+                        }
+                    }
+
+                    Log.d("SELECT IMAGE data = " + data.toString());
+                } else {
+                    InputStream input = null;
+                    OutputStream output = null;
+                    try {
+                        input = getContentResolver().openInputStream(selectedImage);
+                        final File outputFile = ImageUtils.getOutputImageFile();
+                        if (outputFile != null) {
+                            output = new FileOutputStream(outputFile);
+                            LocalStorage.copy(input, output);
+                            image = new Image.Builder().setUrl(outputFile).build();
+                        }
+                    } catch (final FileNotFoundException e) {
+                        Log.e("ImageSelectActivity.onStartResult", e);
+                    } finally {
+                        IOUtils.closeQuietly(input);
+                        IOUtils.closeQuietly(output);
+                    }
                 }
-                imageUri = Uri.parse(filePath);
-            } catch (Exception e) {
-                Log.e("ImageSelectActivity.onActivityResult", e);
+            } else {
+                // Image capture failed, advise user
                 showFailure();
-            } finally {
-                if (cursor != null) {
-                    cursor.close();
-                }
+                return;
             }
-
-            Log.d("SELECT IMAGE data = " + data.toString());
-        } else {
-            Log.d("SELECT IMAGE data is null");
         }
 
         if (requestCode == SELECT_NEW_IMAGE) {
-            showToast(getResources().getString(R.string.info_stored_image) + "\n" + imageUri);
+            showToast(getResources().getString(R.string.info_stored_image) + '\n' + image.getUrl());
         }
 
         loadImagePreview();
@@ -260,33 +301,16 @@ public class ImageSelectActivity extends AbstractActivity {
     /**
      * Scales and writes the scaled image.
      *
-     * @param filePath
-     * @return
+     * @return the scaled image path, or <tt>null</tt> if the image cannot be decoded
      */
-    private String writeScaledImage(final String filePath) {
+    @Nullable
+    private String writeScaledImage(@Nullable final String filePath) {
+        if (filePath == null) {
+            return null;
+        }
         scaleChoiceIndex = scaleView.getSelectedItemPosition();
         final int maxXY = getResources().getIntArray(R.array.log_image_scale_values)[scaleChoiceIndex];
-        if (maxXY == 0) {
-            return filePath;
-        }
-        BitmapFactory.Options sizeOnlyOptions = new BitmapFactory.Options();
-        sizeOnlyOptions.inJustDecodeBounds = true;
-        BitmapFactory.decodeFile(filePath, sizeOnlyOptions);
-        final int myMaxXY = Math.max(sizeOnlyOptions.outHeight, sizeOnlyOptions.outWidth);
-        final int sampleSize = myMaxXY / maxXY;
-        Bitmap image;
-        if (sampleSize > 1) {
-            BitmapFactory.Options sampleOptions = new BitmapFactory.Options();
-            sampleOptions.inSampleSize = sampleSize;
-            image = BitmapFactory.decodeFile(filePath, sampleOptions);
-        } else {
-            image = BitmapFactory.decodeFile(filePath);
-        }
-        final BitmapDrawable scaledImage = ImageHelper.scaleBitmapTo(image, maxXY, maxXY);
-        image = null;
-        final String uploadFilename = getOutputImageFile().getPath();
-        ImageHelper.storeBitmap(scaledImage.getBitmap(), Bitmap.CompressFormat.JPEG, 75, uploadFilename);
-        return uploadFilename;
+        return ImageUtils.readScaleAndWriteImage(filePath, maxXY);
     }
 
     private void showFailure() {
@@ -294,48 +318,25 @@ public class ImageSelectActivity extends AbstractActivity {
     }
 
     private void loadImagePreview() {
-        if (imageUri == null) {
+        if (image.isEmpty()) {
             return;
         }
-        if (!new File(imageUri.getPath()).exists()) {
+        if (!image.existsLocal()) {
             Log.i("Image does not exist");
             return;
         }
 
-        BitmapFactory.Options bitmapOptions = new BitmapFactory.Options();
-        bitmapOptions.inSampleSize = 8;
-        final Bitmap bitmap = BitmapFactory.decodeFile(imageUri.getPath(), bitmapOptions);
-        imagePreview.setImageBitmap(bitmap);
-        imagePreview.setVisibility(View.VISIBLE);
-    }
-
-    private static Uri getOutputImageFileUri() {
-        final File file = getOutputImageFile();
-        if (file == null) {
-            return null;
-        }
-        return Uri.fromFile(file);
-    }
-
-    /** Create a File for saving an image or video */
-    private static File getOutputImageFile() {
-        // To be safe, you should check that the SDCard is mounted
-        // using Environment.getExternalStorageState() before doing this.
-
-        File mediaStorageDir = new File(Compatibility.getExternalPictureDir(), "cgeo");
-        // This location works best if you want the created images to be shared
-        // between applications and persist after your app has been uninstalled.
-
-        // Create the storage directory if it does not exist
-        if (!mediaStorageDir.exists()) {
-            if (!mediaStorageDir.mkdirs()) {
-                Log.w("Failed to create directory");
-                return null;
+        new AsyncTask<Void, Void, Bitmap>() {
+            @Override
+            protected Bitmap doInBackground(final Void... params) {
+                return ImageUtils.readAndScaleImageToFitDisplay(image.getPath());
             }
-        }
 
-        // Create a media file name
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-        return new File(mediaStorageDir.getPath() + File.separator + "IMG_" + timeStamp + ".jpg");
+            @Override
+            protected void onPostExecute(final Bitmap bitmap) {
+                imagePreview.setImageBitmap(bitmap);
+                imagePreview.setVisibility(View.VISIBLE);
+            }
+        }.execute();
     }
 }

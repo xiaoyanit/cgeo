@@ -1,6 +1,9 @@
 package cgeo.geocaching.utils;
 
-import cgeo.geocaching.cgeoapplication;
+import cgeo.geocaching.CgeoApplication;
+
+import org.eclipse.jdt.annotation.NonNull;
+import org.eclipse.jdt.annotation.Nullable;
 
 import android.content.Context;
 
@@ -9,8 +12,11 @@ import android.content.Context;
  * This class uses the deprecated function ClipboardManager.setText(CharSequence).
  * API 11 introduced setPrimaryClip(ClipData)
  */
-@SuppressWarnings("deprecation")
 public final class ClipboardUtils {
+
+    private ClipboardUtils() {
+        // utility class
+    }
 
     /**
      * Places the text passed in onto the clipboard as text
@@ -18,10 +24,24 @@ public final class ClipboardUtils {
      * @param text
      *            The text to place in the clipboard.
      */
-    public static void copyToClipboard(final CharSequence text) {
+    @SuppressWarnings("deprecation")
+    public static void copyToClipboard(final @NonNull CharSequence text) {
         // fully qualified name used here to avoid buggy deprecation warning (of javac) on the import statement
-        final android.text.ClipboardManager clipboard = (android.text.ClipboardManager) cgeoapplication.getInstance().getSystemService(Context.CLIPBOARD_SERVICE);
+        final android.text.ClipboardManager clipboard = (android.text.ClipboardManager) CgeoApplication.getInstance().getSystemService(Context.CLIPBOARD_SERVICE);
         clipboard.setText(text);
+    }
+
+    /**
+     * get clipboard content
+     *
+     */
+    @SuppressWarnings("deprecation")
+    @Nullable
+    public static String getText() {
+        // fully qualified name used here to avoid buggy deprecation warning (of javac) on the import statement
+        final android.text.ClipboardManager clipboard = (android.text.ClipboardManager) CgeoApplication.getInstance().getSystemService(Context.CLIPBOARD_SERVICE);
+        final CharSequence text = clipboard.getText();
+        return text != null ? text.toString() : null;
     }
 
 }
